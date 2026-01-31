@@ -1,3 +1,5 @@
+// Package manalyzer provides CS:GO demo analysis functionality with statistics
+// tracking and visualization.
 package manalyzer
 
 import (
@@ -13,6 +15,7 @@ import (
 
 var ErrNoDemos = errors.New("no .dem files found")
 
+// GatherDemo analyzes a single demo file and returns match statistics.
 func GatherDemo(demoPath string) (*api.Match, error) {
 	match, err := api.AnalyzeDemo(demoPath, api.AnalyzeDemoOptions{
 		IncludePositions: false,
@@ -26,18 +29,16 @@ func GatherDemo(demoPath string) (*api.Match, error) {
 	return match, nil
 }
 
-// GatherAllDemosFromPath recursively finds and analyzes all .dem files in a directory tree
+// GatherAllDemosFromPath recursively finds and analyzes all .dem files in basePath.
 func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 	var matches []*api.Match
 	var errs []error
 	var demoCount int
 
-	// Defensive check for empty path
 	if basePath == "" {
 		return nil, fmt.Errorf("base path is empty")
 	}
 
-	// Validate base path exists
 	info, err := os.Stat(basePath)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("base path does not exist: %s", basePath)
@@ -49,29 +50,26 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 		return nil, fmt.Errorf("base path is not a directory: %s", basePath)
 	}
 
-	// Walk directory tree recursively
 	err = filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			// Continue with other directories on error
 			return nil
 		}
 
 		if d.IsDir() {
-			return nil // Skip directories
+			return nil
 		}
 
 		if filepath.Ext(path) != ".dem" {
-			return nil // Skip non-.dem files
+			return nil
 		}
 
 		demoCount++
 
-		// Analyze demo
 		match, err := GatherDemo(path)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to analyze %s: %w", path, err)
 			errs = append(errs, errMsg)
-			return nil // Continue processing other files
+			return nil
 		}
 
 		matches = append(matches, match)
@@ -83,7 +81,6 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 		errs = append(errs, fmt.Errorf("directory walk error: %w", err))
 	}
 
-	// Return appropriate error if no demos found
 	if demoCount == 0 {
 		return nil, ErrNoDemos
 	}
@@ -92,7 +89,6 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 		return nil, fmt.Errorf("all %d demos failed to parse: %w", demoCount, errors.Join(errs...))
 	}
 
-	// Return partial results with errors
 	if len(errs) > 0 {
 		return matches, errors.Join(errs...)
 	}
@@ -100,6 +96,7 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 	return matches, nil
 }
 
+// GatherAllDemos finds and analyzes all .dem files in the current directory.
 func GatherAllDemos() ([]*api.Match, error) {
 	rgx := "*.dem"
 	hits, err := filepath.Glob(rgx)
@@ -126,5 +123,4 @@ func GatherAllDemos() ([]*api.Match, error) {
 	}
 
 	return matches, nil
-
 }

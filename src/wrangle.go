@@ -8,103 +8,82 @@ import (
 	"github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
 )
 
-// PlayerStats holds all statistics for ONE player across all matches
+// PlayerStats holds statistics for a player across all matches.
 type PlayerStats struct {
-	SteamID64 string // Primary key
-	PlayerName string // For display only
-
-	// Per-map statistics with T/CT breakdown
-	MapStats map[string]*MapStatistics
-
-	// Overall statistics (aggregated across all maps and sides)
+	SteamID64    string
+	PlayerName   string
+	MapStats     map[string]*MapStatistics
 	OverallStats *OverallStatistics
 }
 
-// MapStatistics holds stats for ONE player on ONE map
+// MapStatistics holds per-map statistics for a player.
 type MapStatistics struct {
 	MapName       string
 	MatchesPlayed int
-
-	// Statistics separated by side (T = Terrorist, CT = Counter-Terrorist)
-	SideStats map[string]*SideStatistics // Keys: "T" and "CT"
+	SideStats     map[string]*SideStatistics // Keys: "T" and "CT"
 }
 
-// SideStatistics holds stats for ONE player on ONE map on ONE side
+// SideStatistics holds statistics for one side (T or CT) on a map.
 type SideStatistics struct {
-	Side string // "T" or "CT"
-
-	// Core statistics from STATISTICS.md
-	KAST        float64 // Percentage (0-100)
-	ADR         float64 // Average Damage per Round
-	KD          float64 // Kill/Death ratio
-	Kills       int
-	Deaths      int
-	FirstKills  int // First kill of the round
-	FirstDeaths int // First death of the round
-	TradeKills  int // Killed enemy shortly after teammate death
-	TradeDeaths int // Killed shortly after getting a kill
-
-	// Additional useful stats
+	Side         string
+	KAST         float64 // Percentage (0-100)
+	ADR          float64
+	KD           float64
+	Kills        int
+	Deaths       int
+	FirstKills   int
+	FirstDeaths  int
+	TradeKills   int
+	TradeDeaths  int
 	Assists      int
 	Headshots    int
 	RoundsPlayed int
 }
 
-// OverallStatistics holds aggregated stats across ALL maps and sides
+// OverallStatistics holds aggregated stats across all maps and sides.
 type OverallStatistics struct {
-	KAST          float64 // Weighted average by rounds
-	ADR           float64 // Weighted average by rounds
-	KD            float64 // Total kills / total deaths
-	Kills         int     // Sum across all maps/sides
-	Deaths        int     // Sum
-	FirstKills    int     // Sum
-	FirstDeaths   int     // Sum
-	TradeKills    int     // Sum
-	TradeDeaths   int     // Sum
-	Assists       int     // Sum
-	Headshots     int     // Sum
-	RoundsPlayed  int     // Sum
-	MatchesPlayed int     // Count of unique matches
+	KAST          float64
+	ADR           float64
+	KD            float64
+	Kills         int
+	Deaths        int
+	FirstKills    int
+	FirstDeaths   int
+	TradeKills    int
+	TradeDeaths   int
+	Assists       int
+	Headshots     int
+	RoundsPlayed  int
+	MatchesPlayed int
 }
 
-// WrangleResult is the final output of ProcessMatches()
+// WrangleResult is the output of ProcessMatches.
 type WrangleResult struct {
 	PlayerStats  []*PlayerStats
-	MapList      []string // Unique map names (for UI filtering)
+	MapList      []string
 	TotalMatches int
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-// determinePlayerSideInRound returns which side (T or CT) a player was on in a specific round
+// determinePlayerSideInRound returns which side (T or CT) a player was on.
 func determinePlayerSideInRound(match *api.Match, player *api.Player, round *api.Round) common.Team {
-	// Player belongs to either TeamA or TeamB
-	// Each round records which side TeamA and TeamB were on
 	if player.Team == match.TeamA {
 		return round.TeamASide
 	}
 	return round.TeamBSide
 }
 
-// sideToString converts common.Team to "T" or "CT" string for map keys
-// Returns empty string for unassigned/spectator teams
+// sideToString converts common.Team to "T" or "CT" string.
+// Returns empty string for unassigned/spectator teams.
 func sideToString(side common.Team) string {
 	if side == common.TeamTerrorists {
 		return "T"
 	} else if side == common.TeamCounterTerrorists {
 		return "CT"
 	}
-	// Return empty string for TeamUnassigned, TeamSpectators, etc.
 	return ""
 }
 
-// ============================================================================
-// CORE FUNCTIONS
-// ============================================================================
-
-// ProcessMatches is the main entry point for data processing
+// ProcessMatches processes demo matches and extracts player statistics.
 func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, error) {
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no matches to process")
@@ -127,7 +106,6 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 		return nil, fmt.Errorf("no valid SteamIDs provided")
 	}
 
-	// Initialize PlayerStats for each SteamID
 	playerStatsMap := make(map[uint64]*PlayerStats)
 	for _, steamID64 := range steamID64s {
 		playerStatsMap[steamID64] = &PlayerStats{
@@ -136,27 +114,22 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 		}
 	}
 
-	// Track unique maps
 	mapsEncountered := make(map[string]bool)
 
-	// Process each match
 	for _, match := range matches {
 		mapName := match.MapName
 		mapsEncountered[mapName] = true
 
 		for steamID64, playerStats := range playerStatsMap {
-			// Check if player exists in this match
 			player, exists := match.PlayersBySteamID[steamID64]
 			if !exists {
-				continue // Player wasn't in this match
+				continue
 			}
 
-			// Set player name (for display) from first match
 			if playerStats.PlayerName == "" {
 				playerStats.PlayerName = player.Name
 			}
 
-			// Initialize map stats if needed
 			if playerStats.MapStats[mapName] == nil {
 				playerStats.MapStats[mapName] = &MapStatistics{
 					MapName:       mapName,
@@ -168,10 +141,8 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 			mapStats := playerStats.MapStats[mapName]
 			mapStats.MatchesPlayed++
 
-			// Extract stats by side
 			sideStatsFromMatch := extractPlayerStatsBySide(match, player)
 
-			// Aggregate into existing stats
 			for sideKey, newStats := range sideStatsFromMatch {
 				if mapStats.SideStats[sideKey] == nil {
 					mapStats.SideStats[sideKey] = &SideStatistics{Side: sideKey}
@@ -179,7 +150,6 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 
 				existing := mapStats.SideStats[sideKey]
 
-				// Sum counts
 				existing.Kills += newStats.Kills
 				existing.Deaths += newStats.Deaths
 				existing.Assists += newStats.Assists
@@ -189,7 +159,6 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 				existing.TradeDeaths += newStats.TradeDeaths
 				existing.Headshots += newStats.Headshots
 
-				// Weighted average for ADR
 				oldRounds := existing.RoundsPlayed
 				newRounds := newStats.RoundsPlayed
 				existing.RoundsPlayed += newRounds
@@ -217,12 +186,10 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 		}
 	}
 
-	// Calculate overall stats for each player
 	for _, playerStats := range playerStatsMap {
 		playerStats.OverallStats = calculateOverallStats(playerStats.MapStats)
 	}
 
-	// Convert to slice and return
 	playerStatsList := make([]*PlayerStats, 0, len(playerStatsMap))
 	for _, stats := range playerStatsMap {
 		playerStatsList = append(playerStatsList, stats)
@@ -240,26 +207,22 @@ func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, er
 	}, nil
 }
 
-// extractPlayerStatsBySide analyzes a match and extracts side-specific statistics for a player
+// extractPlayerStatsBySide extracts side-specific statistics for a player from a match.
 func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*SideStatistics {
-	// Initialize stats for both sides
 	sideStats := make(map[string]*SideStatistics)
 	sideStats["T"] = &SideStatistics{Side: "T"}
 	sideStats["CT"] = &SideStatistics{Side: "CT"}
 
-	// Count rounds per side
 	for _, round := range match.Rounds {
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
 		if sideKey == "" {
-			continue // Skip unassigned teams
+			continue
 		}
 		sideStats[sideKey].RoundsPlayed++
 	}
 
-	// Process kills and deaths
 	for _, kill := range match.Kills {
-		// Find which round this kill happened in
 		var round *api.Round
 		for _, r := range match.Rounds {
 			if r.Number == kill.RoundNumber {
@@ -271,11 +234,10 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			continue
 		}
 
-		// Determine player's side in this round
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
 		if sideKey == "" {
-			continue // Skip unassigned teams
+			continue
 		}
 		stats := sideStats[sideKey]
 
@@ -292,7 +254,6 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			}
 		}
 
-		// Count deaths (if player is victim)
 		if kill.VictimSteamID64 == player.SteamID64 && !kill.IsVictimControllingBot {
 			if !kill.IsSuicide() {
 				stats.Deaths++
@@ -302,7 +263,6 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			}
 		}
 
-		// Count assists
 		if kill.AssisterSteamID64 == player.SteamID64 && !kill.IsAssisterControllingBot {
 			if kill.AssisterSide != kill.VictimSide {
 				stats.Assists++
@@ -310,16 +270,14 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 		}
 	}
 
-	// Calculate first kills/deaths per side
 	for _, round := range match.Rounds {
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
 		if sideKey == "" {
-			continue // Skip unassigned teams
+			continue
 		}
 		stats := sideStats[sideKey]
 
-		// Get all kills in this round
 		var killsInRound []*api.Kill
 		for _, kill := range match.Kills {
 			if kill.RoundNumber == round.Number {
@@ -332,34 +290,29 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
 				continue
 			}
-			// This is the first valid kill in the round
 			if kill.KillerSteamID64 == player.SteamID64 {
 				stats.FirstKills++
 			}
-			break // Stop after finding first valid kill
+			break
 		}
 
-		// Find first death
 		for _, kill := range killsInRound {
 			if kill.IsVictimControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
 				continue
 			}
-			// This is the first valid death in the round
 			if kill.VictimSteamID64 == player.SteamID64 {
 				stats.FirstDeaths++
 			}
-			break // Stop after finding first valid death
+			break
 		}
 	}
 
-	// Calculate damage and ADR
 	totalDamagePerSide := make(map[string]int)
 	for _, damage := range match.Damages {
 		if damage.AttackerSteamID64 != player.SteamID64 {
 			continue
 		}
 
-		// Find which round this damage occurred in
 		for _, round := range match.Rounds {
 			if damage.Tick >= round.StartTick && damage.Tick <= round.EndTick {
 				playerSide := determinePlayerSideInRound(match, player, round)
@@ -372,17 +325,15 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 		}
 	}
 
-	// Calculate ADR (Average Damage per Round)
 	for sideKey, totalDamage := range totalDamagePerSide {
 		if sideKey == "" {
-			continue // Skip unassigned
+			continue
 		}
 		if stats, ok := sideStats[sideKey]; ok && stats != nil && stats.RoundsPlayed > 0 {
 			stats.ADR = float64(totalDamage) / float64(stats.RoundsPlayed)
 		}
 	}
 
-	// Calculate K/D for each side
 	for _, stats := range sideStats {
 		if stats.Deaths > 0 {
 			stats.KD = float64(stats.Kills) / float64(stats.Deaths)
@@ -398,63 +349,53 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 	return sideStats
 }
 
-// calculateKASTForSide calculates KAST percentage for a specific side
+// calculateKASTForSide calculates KAST percentage for a specific side.
 // KAST = (Kill or Assist or Survived or Traded) / Total Rounds
-// Returns percentage (0-100)
 func calculateKASTForSide(match *api.Match, player *api.Player, side common.Team) float64 {
 	kastPerRound := make(map[int]bool)
 	roundsOnThisSide := 0
 
-	// Check each round
 	for _, round := range match.Rounds {
 		playerSide := determinePlayerSideInRound(match, player, round)
 		if playerSide != side {
-			continue // Player was on opposite side this round
+			continue
 		}
 
 		roundsOnThisSide++
 		kastPerRound[round.Number] = false
 		playerSurvived := true
 
-		// Check all kills in this round
 		for _, kill := range match.Kills {
 			if round.Number != kill.RoundNumber {
 				continue
 			}
 
-			// Skip team kills
 			isTeamKill := kill.KillerSide == kill.VictimSide
 			if isTeamKill {
 				continue
 			}
 
-			// Check for Assist
 			if kill.AssisterSteamID64 == player.SteamID64 {
 				kastPerRound[round.Number] = true
 			}
 
-			// Check for Kill
 			if kill.KillerSteamID64 == player.SteamID64 && kill.VictimSteamID64 != player.SteamID64 {
 				kastPerRound[round.Number] = true
 			}
 
-			// Check for Death
 			if kill.VictimSteamID64 == player.SteamID64 {
 				playerSurvived = false
-				// Check if Traded
 				if kill.IsTradeDeath {
 					kastPerRound[round.Number] = true
 				}
 			}
 		}
 
-		// Check for Survived
 		if playerSurvived {
 			kastPerRound[round.Number] = true
 		}
 	}
 
-	// Calculate percentage
 	kastEventCount := 0
 	for _, hasKASTEvent := range kastPerRound {
 		if hasKASTEvent {
@@ -469,11 +410,10 @@ func calculateKASTForSide(match *api.Match, player *api.Player, side common.Team
 	return 0.0
 }
 
-// calculateOverallStats aggregates statistics across all maps and sides
+// calculateOverallStats aggregates statistics across all maps and sides.
 func calculateOverallStats(mapStats map[string]*MapStatistics) *OverallStatistics {
 	overall := &OverallStatistics{}
 
-	// Sum all counts
 	for _, mapStat := range mapStats {
 		overall.MatchesPlayed += mapStat.MatchesPlayed
 
@@ -490,14 +430,12 @@ func calculateOverallStats(mapStats map[string]*MapStatistics) *OverallStatistic
 		}
 	}
 
-	// Calculate K/D
 	if overall.Deaths > 0 {
 		overall.KD = float64(overall.Kills) / float64(overall.Deaths)
 	} else if overall.Kills > 0 {
 		overall.KD = float64(overall.Kills)
 	}
 
-	// Weighted average for ADR
 	totalDamage := 0.0
 	for _, mapStat := range mapStats {
 		for _, sideStat := range mapStat.SideStats {
@@ -508,7 +446,6 @@ func calculateOverallStats(mapStats map[string]*MapStatistics) *OverallStatistic
 		overall.ADR = totalDamage / float64(overall.RoundsPlayed)
 	}
 
-	// Weighted average for KAST
 	kastRoundsTotal := 0.0
 	for _, mapStat := range mapStats {
 		for _, sideStat := range mapStat.SideStats {

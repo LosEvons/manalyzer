@@ -11,32 +11,23 @@ import (
 	"github.com/rivo/tview"
 )
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
 const (
-	eventLogHeight = 5 // Height in rows for the event log panel
+	eventLogHeight = 5
 )
 
-// ============================================================================
-// DATA STRUCTURES
-// ============================================================================
-
+// PlayerInput represents user input for player tracking.
 type PlayerInput struct {
-	Name      string // For display purposes only
-	SteamID64 string // Only SteamID64 format supported (17 digits)
+	Name      string
+	SteamID64 string // 17-digit SteamID64
 }
 
+// AnalysisConfig holds configuration for analysis.
 type AnalysisConfig struct {
-	Players  [5]PlayerInput // Support 1-5 players (not all slots required)
+	Players  [5]PlayerInput
 	BasePath string
 }
 
-// ============================================================================
-// UI COMPONENTS
-// ============================================================================
-
+// UI manages the terminal user interface.
 type UI struct {
 	App        *tview.Application
 	Pages      *tview.Pages
@@ -46,22 +37,20 @@ type UI struct {
 	statsTable *StatisticsTable
 }
 
+// EventLog displays timestamped event messages.
 type EventLog struct {
 	textView *tview.TextView
 	maxLines int
 	lines    []string
 }
 
+// StatisticsTable displays player statistics.
 type StatisticsTable struct {
 	table      *tview.Table
 	data       *WrangleResult
-	filterMap  string // "" = all maps, or specific map name
-	filterSide string // "" = all sides, "T", or "CT"
+	filterMap  string
+	filterSide string
 }
-
-// ============================================================================
-// EVENT LOG IMPLEMENTATION
-// ============================================================================
 
 func newEventLog(maxLines int) *EventLog {
 	tv := tview.NewTextView().
@@ -72,7 +61,6 @@ func newEventLog(maxLines int) *EventLog {
 	tv.SetTitle("Event Log")
 
 	tv.SetChangedFunc(func() {
-		// Auto-scroll to bottom
 		tv.ScrollToEnd()
 	})
 
@@ -125,9 +113,6 @@ func (el *EventLog) LogError(message string) {
 	el.textView.SetText(builder.String())
 }
 
-// ============================================================================
-// STATISTICS TABLE IMPLEMENTATION
-// ============================================================================
 
 func newStatisticsTable() *StatisticsTable {
 	table := tview.NewTable().
@@ -360,9 +345,6 @@ func (st *StatisticsTable) SetFilter(mapFilter, sideFilter string) {
 	st.renderTable()
 }
 
-// ============================================================================
-// FORM CREATION AND VALIDATION
-// ============================================================================
 
 func createPlayerInputForm() *tview.Form {
 	form := tview.NewForm()
@@ -404,9 +386,6 @@ func validateSteamID64(text string, lastChar rune) bool {
 	return len(text) <= 17
 }
 
-// ============================================================================
-// BUTTON HANDLERS
-// ============================================================================
 
 func (u *UI) setupFormHandlers(form *tview.Form) {
 	// Get button indices (assuming Analyze=0, Clear=1)
@@ -491,9 +470,6 @@ func (u *UI) extractConfigFromForm(form *tview.Form) AnalysisConfig {
 	return config
 }
 
-// ============================================================================
-// ANALYSIS EXECUTION
-// ============================================================================
 
 func (u *UI) runAnalysis(config AnalysisConfig) {
 	// Add panic recovery to catch crashes and log them
@@ -553,9 +529,6 @@ func (u *UI) runAnalysis(config AnalysisConfig) {
 	})
 }
 
-// ============================================================================
-// UI INITIALIZATION
-// ============================================================================
 
 func New() *UI {
 	app := tview.NewApplication()
@@ -612,9 +585,6 @@ func New() *UI {
 	return ui
 }
 
-// ============================================================================
-// PUBLIC METHODS
-// ============================================================================
 
 func (u *UI) Start() error {
 	return u.App.Run()
