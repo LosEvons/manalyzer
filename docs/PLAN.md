@@ -1,42 +1,100 @@
 # Manalyzer Implementation Plan
 
-## Overview
-This document outlines the implementation plan for the Manalyzer application - a CS:GO demo analyzer that collects player statistics from demo files, filters them by specified players, and displays the results in a terminal UI.
+## 📋 Document Overview
 
-**Document Status:** ✅ Complete with executable code examples for all components
+This is a **complete, AI-agent-ready implementation plan** for the Manalyzer CS:GO demo analyzer application.
 
-**Key Sections:**
-- **Section 2:** gather.go - Complete implementation with error handling
-- **Section 3.7:** wrangle.go - Complete side-specific statistics extraction (600+ lines of code)
-- **Section 1.6:** GUI - Detailed UI implementation examples
-- **Section 11a:** cs-demo-analyzer API reference
+**Purpose:** Analyze CS:GO demo files, extract player statistics filtered by SteamID64, display results in terminal UI with map/side filtering.
 
-## Quick Implementation Summary
+**Document Status:** ✅ Optimized for AI agent implementation with step-by-step instructions
 
-**The Core Challenge:** cs-demo-analyzer provides match-total statistics, but we need side-specific (T/CT) stats.
+---
 
-**The Solution:** Section 3.7 provides complete working code that:
-1. Determines which side a player was on each round
-2. Filters kills/deaths/damage by side
-3. Calculates KAST per side
-4. Aggregates statistics with weighted averages
+## 🎯 Prerequisites
 
-**Key Data Structures:**
+Before starting implementation, ensure:
+- [ ] Go 1.23+ installed
+- [ ] Dependencies in go.mod already present
+- [ ] Familiarity with tview (TUI library)
+- [ ] Understanding of cs-demo-analyzer API (reference in Section 11a)
+
+---
+
+## 🚀 Implementation Order (Follow This Sequence)
+
+**Phase 1: Data Layer (wrangle.go)** ← Start here
+1. Define data structures (Section 3.2)
+2. Implement side determination helpers (Section 3.7.2)
+3. Implement side-specific statistics extraction (Section 3.7.3)
+4. Implement aggregation functions (Section 3.7.4)
+5. ✅ **CHECKPOINT 1:** Test wrangle.go with sample data
+
+**Phase 2: Data Collection (gather.go)**
+1. Implement GatherAllDemosFromPath() (Section 2.5)
+2. Add error handling and logging (Section 2.6)
+3. ✅ **CHECKPOINT 2:** Test with real demo files
+
+**Phase 3: UI Layer (gui.go)**
+1. Update UI struct (Section 1.2)
+2. Create input form (Section 1.6.1)
+3. Add event logging (Section 1.6.3)
+4. Create statistics table (Section 1.6.4)
+5. Wire button handlers (Section 1.6.2)
+6. ✅ **CHECKPOINT 3:** Test UI interactivity
+
+**Phase 4: Integration**
+1. Connect components (Section 1.6.6)
+2. Add end-to-end flow (Section 5.1)
+3. ✅ **CHECKPOINT 4:** Full integration test
+
+---
+
+## 💡 Quick Reference
+
+### Core Challenge
+cs-demo-analyzer provides **match-total** statistics, but we need **side-specific** (T/CT) stats.
+
+### The Solution
+**Key Insight:** Iterate rounds to determine player side, filter events accordingly.
+
 ```go
-Match.PlayersBySteamID[steamID64] → Player (by SteamID64)
-Player.Team → Team
-Round.TeamASide / Round.TeamBSide → which side each team was on
-Kill.KillerSide / Kill.VictimSide → side for each kill
-Kill.IsTradeKill / Kill.IsTradeDeath → pre-calculated (5 sec window)
-```
-
-**Key Algorithm:**
-```go
+// Core algorithm for side determination
 if player.Team == match.TeamA {
     playerSide = round.TeamASide
 } else {
     playerSide = round.TeamBSide
 }
+```
+
+### Key Data Access Patterns
+```go
+match.PlayersBySteamID[steamID64]  // Direct player lookup ✅
+round.TeamASide / round.TeamBSide  // Side per round ✅
+kill.KillerSide / kill.VictimSide  // Side per kill ✅
+kill.IsTradeKill / IsTradeDeath    // Pre-calculated ✅
+```
+
+### ⚠️ IMPORTANT: What NOT to Reimplement
+cs-demo-analyzer already provides these (use built-in methods):
+- ✅ `player.KAST()` - Match-total KAST
+- ✅ `player.KillCount()` - Match-total kills
+- ✅ `player.DeathCount()` - Match-total deaths
+- ✅ `player.TradeKillCount()` - Match-total trade kills
+- ✅ Trade detection (5-second window, pre-calculated in Kill objects)
+
+**Only implement custom logic for side-specific breakdowns.**
+
+---
+
+## 📁 File Structure
+
+```
+manalyzer/
+├── src/
+│   ├── gui.go          # UI components [PHASE 3]
+│   ├── gather.go       # Demo file collection [PHASE 2]
+│   └── wrangle.go      # Statistics extraction [PHASE 1] ← Start here
+└── main.go             # Entry point [PHASE 4]
 ```
 
 ## Architecture Overview
@@ -860,55 +918,63 @@ Result: all matches, nil error
 UI: "Found 15 demos, starting analysis..."
 ```
 
-## 3. Wrangle Component (wrangle.go)
+## 3. Wrangle Component (wrangle.go) - DATA LAYER
+
+⚠️ **IMPLEMENTATION PRIORITY: HIGH - Start here!**
 
 ### 3.1 Purpose
-Transform raw match data from cs-demo-analyzer into player-specific statistics that can be:
-- Filtered by SteamID64
-- Grouped by map
-- Displayed in tables
+Transform raw cs-demo-analyzer Match data into player-specific statistics:
+- ✅ Filtered by SteamID64
+- ✅ Grouped by map
+- ✅ Separated by side (T/CT)
+- ✅ Ready for UI display
 
 ### 3.2 Data Structures
 
-Based on STATISTICS.md, create the following structures with support for filtering by map and side (T/CT):
+💡 **TIP:** Keep structures simple. Only store what UI needs to display.
+
+⚠️ **SIMPLIFICATION:** We use player.KAST() and other built-in methods for overall stats. Only custom calculations needed for side-specific breakdown.
 
 ```go
-// PlayerStats holds statistics for a single player
+// File: src/wrangle.go
+
+package manalyzer
+
+// PlayerStats holds all statistics for ONE player across all matches
 type PlayerStats struct {
-    SteamID64    string
+    SteamID64    string  // Primary key
     PlayerName   string  // For display only
     
-    // Per-map statistics with side breakdown
+    // Per-map statistics with T/CT breakdown
     MapStats map[string]*MapStatistics
     
     // Overall statistics (aggregated across all maps and sides)
     OverallStats *OverallStatistics
 }
 
-// MapStatistics holds statistics for a player on a specific map
-// Separated by side (T/CT) for filtering
+// MapStatistics holds stats for ONE player on ONE map
 type MapStatistics struct {
-    MapName      string
+    MapName       string
     MatchesPlayed int
     
-    // Statistics by side (T = Terrorist, CT = Counter-Terrorist)
-    SideStats map[string]*SideStatistics
+    // Statistics separated by side (T = Terrorist, CT = Counter-Terrorist)
+    SideStats map[string]*SideStatistics  // Keys: "T" and "CT"
 }
 
-// SideStatistics holds stats for a specific side on a map
+// SideStatistics holds stats for ONE player on ONE map on ONE side
 type SideStatistics struct {
-    Side         string   // "T" or "CT"
+    Side string  // "T" or "CT"
     
-    // Statistics from STATISTICS.md
-    KAST         float64  // Percentage (0-100)
-    ADR          float64  // Average Damage per Round
-    KD           float64  // Kill/Death ratio
-    Kills        int
-    Deaths       int
-    FirstKills   int
-    FirstDeaths  int
-    TradeKills   int      // 2-4 second window after teammate death
-    TradeDeaths  int      // 2-4 second window after getting a kill
+    // Core statistics from STATISTICS.md
+    KAST        float64  // Percentage (0-100)
+    ADR         float64  // Average Damage per Round
+    KD          float64  // Kill/Death ratio
+    Kills       int
+    Deaths      int
+    FirstKills  int      // First kill of the round
+    FirstDeaths int      // First death of the round
+    TradeKills  int      // Killed enemy shortly after teammate death
+    TradeDeaths int      // Killed shortly after getting a kill
     
     // Additional useful stats
     Assists      int
@@ -916,32 +982,32 @@ type SideStatistics struct {
     RoundsPlayed int
 }
 
-// OverallStatistics holds aggregated stats across all maps and sides
+// OverallStatistics holds aggregated stats across ALL maps and sides
 type OverallStatistics struct {
-    // Aggregated statistics from STATISTICS.md
-    KAST         float64  // Weighted average
-    ADR          float64  // Weighted average
-    KD           float64  // Total kills / total deaths
-    Kills        int      // Sum
-    Deaths       int      // Sum
-    FirstKills   int      // Sum
-    FirstDeaths  int      // Sum
-    TradeKills   int      // Sum
-    TradeDeaths  int      // Sum
-    
-    // Additional stats
-    Assists      int
-    Headshots    int
-    RoundsPlayed int
-    MatchesPlayed int
+    KAST          float64  // Weighted average by rounds
+    ADR           float64  // Weighted average by rounds
+    KD            float64  // Total kills / total deaths
+    Kills         int      // Sum across all maps/sides
+    Deaths        int      // Sum
+    FirstKills    int      // Sum
+    FirstDeaths   int      // Sum
+    TradeKills    int      // Sum
+    TradeDeaths   int      // Sum
+    Assists       int      // Sum
+    Headshots     int      // Sum
+    RoundsPlayed  int      // Sum
+    MatchesPlayed int      // Count of unique matches
 }
 
-// WrangleResult holds the complete analysis result
+// WrangleResult is the final output of ProcessMatches()
 type WrangleResult struct {
     PlayerStats  []*PlayerStats
-    MapList      []string  // Unique maps encountered
+    MapList      []string  // Unique map names (for UI filtering)
     TotalMatches int
 }
+```
+
+✅ **CHECKPOINT:** Data structures defined. Ready for implementation.
 ```
 
 ### 3.3 Core Functions
@@ -1201,26 +1267,52 @@ const (
 )
 ```
 
-### 3.7.2 Determining Player Side Per Round
+### 3.7. IMPLEMENTATION GUIDE: Side-Specific Statistics
 
-**The Core Algorithm:**
+⚠️ **THIS IS THE CORE IMPLEMENTATION - Follow carefully**
+
+#### 3.7.1 Understanding the Data Flow
+
+```
+Input: Match from cs-demo-analyzer
+  ↓
+Step 1: For each round, determine which side player was on
+  ↓
+Step 2: Filter kills/deaths/damage by that side
+  ↓
+Step 3: Aggregate into T and CT statistics
+  ↓
+Output: map[string]*SideStatistics (keys: "T", "CT")
+```
+
+#### 3.7.2 Helper Functions (Implement First)
+
+**File: src/wrangle.go**
 
 ```go
+// ============================================================================
+// HELPER FUNCTIONS - Implement these first
+// ============================================================================
+
+import (
+    "github.com/akiver/cs-demo-analyzer/pkg/api"
+    "github.com/akiver/cs-demo-analyzer/pkg/api/constants"
+    "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
+)
+
 // determinePlayerSideInRound returns which side (T or CT) a player was on in a specific round
+// 💡 TIP: This is the CORE algorithm for side-specific stats
 func determinePlayerSideInRound(player *api.Player, round *api.Round) common.Team {
     // Player belongs to either TeamA or TeamB
     // Each round records which side TeamA and TeamB were on
     
-    // Check if player is on TeamA
     if player.Team == player.match.TeamA {
         return round.TeamASide
     }
-    
-    // Player must be on TeamB
     return round.TeamBSide
 }
 
-// sideToString converts common.Team to "T" or "CT" string
+// sideToString converts common.Team to "T" or "CT" string for map keys
 func sideToString(side common.Team) string {
     if side == common.TeamTerrorists {
         return "T"
@@ -1229,49 +1321,46 @@ func sideToString(side common.Team) string {
 }
 ```
 
-### 3.7.3 Extracting Side-Specific Statistics
+✅ **CHECKPOINT:** Helper functions implemented and tested.
+```
 
-**Complete Implementation:**
+#### 3.7.3 Main Function: extractPlayerStatsBySide
 
+⚠️ **IMPLEMENT IN THIS ORDER:**
+
+**Step 1: Initialize side statistics**
 ```go
-package manalyzer
-
-import (
-    "strconv"
-    
-    "github.com/akiver/cs-demo-analyzer/pkg/api"
-    "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
-)
-
-// extractPlayerStatsBySide extracts all statistics for a player, separated by side
 func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*SideStatistics {
+    // Initialize stats for both sides
     sideStats := make(map[string]*SideStatistics)
     sideStats["T"] = &SideStatistics{Side: "T"}
     sideStats["CT"] = &SideStatistics{Side: "CT"}
     
-    // Track rounds played per side
-    roundsPerSide := make(map[string][]int)
-    
-    // Iterate through all rounds to determine side per round
+    // TODO: Continue with Step 2
+}
+```
+
+**Step 2: Count rounds per side**
+```go
+    // Iterate through all rounds to count rounds played per side
     for _, round := range match.Rounds {
         playerSide := determinePlayerSideInRound(player, round)
         sideKey := sideToString(playerSide)
-        
-        roundsPerSide[sideKey] = append(roundsPerSide[sideKey], round.Number)
         sideStats[sideKey].RoundsPlayed++
     }
-    
-    // Now process kills/deaths/damage per side
+```
+
+💡 **TIP:** After Step 2, you should have correct RoundsPlayed counts for T and CT.
+
+**Step 3: Process kills and deaths**
+```go
+    // Process each kill event
     for _, kill := range match.Kills {
-        roundNumber := kill.RoundNumber
-        
-        // Determine which side player was on this round
-        var playerSideThisRound common.Team
+        // Find which round this kill happened in
         var round *api.Round
         for _, r := range match.Rounds {
-            if r.Number == roundNumber {
+            if r.Number == kill.RoundNumber {
                 round = r
-                playerSideThisRound = determinePlayerSideInRound(player, r)
                 break
             }
         }
@@ -1279,10 +1368,12 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             continue
         }
         
-        sideKey := sideToString(playerSideThisRound)
+        // Determine player's side in this round
+        playerSide := determinePlayerSideInRound(player, round)
+        sideKey := sideToString(playerSide)
         stats := sideStats[sideKey]
         
-        // Check if this kill involves our player
+        // Count kills (if player is killer)
         if kill.KillerSteamID64 == player.SteamID64 && !kill.IsKillerControllingBot {
             if !kill.IsSuicide() && !kill.IsTeamKill() {
                 stats.Kills++
@@ -1295,6 +1386,7 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             }
         }
         
+        // Count deaths (if player is victim)
         if kill.VictimSteamID64 == player.SteamID64 && !kill.IsVictimControllingBot {
             if !kill.IsSuicide() && kill.WeaponName != constants.WeaponBomb {
                 stats.Deaths++
@@ -1304,20 +1396,26 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             }
         }
         
+        // Count assists
         if kill.AssisterSteamID64 == player.SteamID64 && !kill.IsAssisterControllingBot {
             if kill.AssisterSide != kill.VictimSide {
                 stats.Assists++
             }
         }
     }
-    
-    // Calculate first kills/deaths per side
+```
+
+✅ **CHECKPOINT:** After Step 3, basic kill/death/assist counts should be correct.
+
+**Step 4: Calculate first kills/deaths**
+```go
+    // For each round, find first kill/death
     for _, round := range match.Rounds {
         playerSide := determinePlayerSideInRound(player, round)
         sideKey := sideToString(playerSide)
         stats := sideStats[sideKey]
         
-        // Get kills in this round, in order
+        // Get all kills in this round
         var killsInRound []*api.Kill
         for _, kill := range match.Kills {
             if kill.RoundNumber == round.Number {
@@ -1325,16 +1423,15 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             }
         }
         
-        // Find first kill (non-suicide, non-teamkill)
+        // Find first kill
         for _, kill := range killsInRound {
             if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
                 continue
             }
-            
             if kill.KillerSteamID64 == player.SteamID64 {
                 stats.FirstKills++
             }
-            break // Only count the first kill
+            break  // Only count first kill
         }
         
         // Find first death
@@ -1342,39 +1439,45 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
                 continue
             }
-            
             if kill.VictimSteamID64 == player.SteamID64 {
                 stats.FirstDeaths++
             }
-            break // Only count the first death
+            break  // Only count first death
         }
     }
-    
-    // Calculate damage per side
+```
+
+**Step 5: Calculate damage and ADR**
+```go
+    // Calculate total damage per side
     totalDamagePerSide := make(map[string]int)
     for _, damage := range match.Damages {
-        if damage.AttackerSteamID64 == player.SteamID64 {
-            // Determine which round this damage occurred in
-            // (Damage events have Tick, need to map to round)
-            for _, round := range match.Rounds {
-                if damage.Tick >= round.StartTick && damage.Tick <= round.EndTick {
-                    playerSide := determinePlayerSideInRound(player, round)
-                    sideKey := sideToString(playerSide)
-                    totalDamagePerSide[sideKey] += damage.HealthDamage
-                    break
-                }
+        if damage.AttackerSteamID64 != player.SteamID64 {
+            continue
+        }
+        
+        // Find which round this damage occurred in
+        for _, round := range match.Rounds {
+            if damage.Tick >= round.StartTick && damage.Tick <= round.EndTick {
+                playerSide := determinePlayerSideInRound(player, round)
+                sideKey := sideToString(playerSide)
+                totalDamagePerSide[sideKey] += damage.HealthDamage
+                break
             }
         }
     }
     
-    // Calculate ADR (Average Damage per Round) per side
+    // Calculate ADR (Average Damage per Round)
     for sideKey, totalDamage := range totalDamagePerSide {
         if sideStats[sideKey].RoundsPlayed > 0 {
             sideStats[sideKey].ADR = float64(totalDamage) / float64(sideStats[sideKey].RoundsPlayed)
         }
     }
-    
-    // Calculate K/D per side
+```
+
+**Step 6: Calculate K/D ratio**
+```go
+    // Calculate K/D for each side
     for _, stats := range sideStats {
         if stats.Deaths > 0 {
             stats.KD = float64(stats.Kills) / float64(stats.Deaths)
@@ -1382,13 +1485,19 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
             stats.KD = float64(stats.Kills)
         }
     }
-    
-    // Calculate KAST per side
+```
+
+**Step 7: Calculate KAST**
+```go
+    // Calculate KAST for each side
     sideStats["T"].KAST = calculateKASTForSide(match, player, common.TeamTerrorists)
     sideStats["CT"].KAST = calculateKASTForSide(match, player, common.TeamCounterTerrorists)
     
     return sideStats
 }
+```
+
+✅ **CHECKPOINT:** extractPlayerStatsBySide is complete and should return correct statistics for both sides.
 
 // calculateKASTForSide calculates KAST percentage for a specific side
 // KAST = (Rounds with Kill or Assist or Survived or Traded) / Total Rounds on that side
