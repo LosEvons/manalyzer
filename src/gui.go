@@ -28,6 +28,7 @@ func New() *UI {
 	// Create UI components  
 	middle := tview.NewTextView()
 	middle.SetBorder(true).SetTitle("Status")
+	middle.SetText("Ready. Enter base path and steamID64s, then click Analyze.")
 	
 	bottom := tview.NewTextView()
 	bottom.SetBorder(true).SetTitle("Statistics")
@@ -92,9 +93,6 @@ func New() *UI {
 
 	ui.Pages = pages
 	ui.Root = col
-
-	// Set initial status
-	ui.SetMiddleText("Ready. Enter base path and steamID64s, then click Analyze.")
 
 	return ui
 }

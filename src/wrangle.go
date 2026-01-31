@@ -291,7 +291,7 @@ return "      No data\n"
 }
 
 return fmt.Sprintf(
-"      K: %d | D: %d | K/D: %.2f | ADR: %.1f | KAST: %.1f%%%% | HS%%%%: %d\n"+
+"      K: %d | D: %d | K/D: %.2f | ADR: %.1f | KAST: %.1f%% | HS%%: %d\n"+
 "      FK: %d | FD: %d | TK: %d | TD: %d | Assists: %d\n",
 stats.Kills, stats.Deaths, stats.KillDeathRatio, stats.ADR, stats.KAST*100, stats.HeadshotPercent,
 stats.FirstKills, stats.FirstDeaths, stats.TradeKills, stats.TradeDeaths, stats.AssistCount,
