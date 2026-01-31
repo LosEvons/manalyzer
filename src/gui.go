@@ -195,6 +195,12 @@ func (st *StatisticsTable) renderTable() {
 						row++
 					}
 				}
+				
+				// Add per-map summary row (T+CT combined) if not filtering by side
+				if st.filterSide == "" {
+					st.addMapSummaryRow(row, playerStats.PlayerName, mapName, mapStats)
+					row++
+				}
 			}
 
 			// Add overall row
@@ -227,6 +233,70 @@ func (st *StatisticsTable) addDataRow(row int, playerName, mapName, side string,
 		cell := tview.NewTableCell(text).
 			SetAlign(tview.AlignCenter).
 			SetTextColor(tcell.ColorWhite)
+		st.table.SetCell(row, col, cell)
+	}
+}
+
+func (st *StatisticsTable) addMapSummaryRow(row int, playerName, mapName string, mapStats *MapStatistics) {
+	// Calculate combined T+CT statistics for this map
+	var totalKills, totalDeaths, totalAssists int
+	var totalFirstKills, totalFirstDeaths int
+	var totalTradeKills, totalTradeDeaths int
+	var totalHeadshots, totalRoundsPlayed int
+	var weightedKAST, weightedADR float64
+	
+	for _, sideStats := range mapStats.SideStats {
+		totalKills += sideStats.Kills
+		totalDeaths += sideStats.Deaths
+		totalAssists += sideStats.Assists
+		totalFirstKills += sideStats.FirstKills
+		totalFirstDeaths += sideStats.FirstDeaths
+		totalTradeKills += sideStats.TradeKills
+		totalTradeDeaths += sideStats.TradeDeaths
+		totalHeadshots += sideStats.Headshots
+		totalRoundsPlayed += sideStats.RoundsPlayed
+		
+		// Weighted average for KAST and ADR
+		weightedKAST += (sideStats.KAST / 100.0) * float64(sideStats.RoundsPlayed)
+		weightedADR += sideStats.ADR * float64(sideStats.RoundsPlayed)
+	}
+	
+	// Calculate averages
+	kast := 0.0
+	adr := 0.0
+	if totalRoundsPlayed > 0 {
+		kast = (weightedKAST / float64(totalRoundsPlayed)) * 100.0
+		adr = weightedADR / float64(totalRoundsPlayed)
+	}
+	
+	// Calculate K/D
+	kd := 0.0
+	if totalDeaths > 0 {
+		kd = float64(totalKills) / float64(totalDeaths)
+	} else if totalKills > 0 {
+		kd = float64(totalKills)
+	}
+	
+	cols := []string{
+		playerName,
+		mapName,
+		"Both",
+		fmt.Sprintf("%.1f", kast),
+		fmt.Sprintf("%.1f", adr),
+		fmt.Sprintf("%.2f", kd),
+		fmt.Sprintf("%d", totalKills),
+		fmt.Sprintf("%d", totalDeaths),
+		fmt.Sprintf("%d", totalFirstKills),
+		fmt.Sprintf("%d", totalFirstDeaths),
+		fmt.Sprintf("%d", totalTradeKills),
+		fmt.Sprintf("%d", totalTradeDeaths),
+	}
+
+	for col, text := range cols {
+		cell := tview.NewTableCell(text).
+			SetAlign(tview.AlignCenter).
+			SetTextColor(tcell.ColorAqua).
+			SetAttributes(tcell.AttrBold)
 		st.table.SetCell(row, col, cell)
 	}
 }
