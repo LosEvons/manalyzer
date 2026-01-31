@@ -625,22 +625,54 @@ For each demo file:
 Return []*api.Match + errors
 ```
 
-### 2.5 Example Implementation Pattern
+### 2.5 Complete Implementation with Error Handling and Logging
 
 ```go
+package manalyzer
+
+import (
+    "errors"
+    "fmt"
+    "io/fs"
+    "log"
+    "os"
+    "path/filepath"
+    
+    "github.com/akiver/cs-demo-analyzer/pkg/api"
+    "github.com/akiver/cs-demo-analyzer/pkg/api/constants"
+)
+
+var ErrNoDemos = errors.New("no .dem files found")
+
+// GatherAllDemosFromPath recursively finds and analyzes all .dem files in basePath
+// Returns:
+//   - []*api.Match: slice of successfully analyzed matches
+//   - error: combined error of all failures (may be non-nil even with partial results)
 func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
     var matches []*api.Match
     var errs []error
+    var demoCount int
     
-    // Validate path
-    if _, err := os.Stat(basePath); os.IsNotExist(err) {
+    // Validate base path exists
+    info, err := os.Stat(basePath)
+    if os.IsNotExist(err) {
         return nil, fmt.Errorf("base path does not exist: %s", basePath)
     }
+    if err != nil {
+        return nil, fmt.Errorf("cannot access base path: %w", err)
+    }
+    if !info.IsDir() {
+        return nil, fmt.Errorf("base path is not a directory: %s", basePath)
+    }
     
-    // Walk directory tree
-    err := filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
+    log.Printf("Searching for demos in: %s", basePath)
+    
+    // Walk directory tree recursively
+    err = filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
         if err != nil {
-            return err
+            // Log but don't fail - continue with other directories
+            log.Printf("Warning: cannot access %s: %v", path, err)
+            return nil
         }
         
         // Skip directories
@@ -648,29 +680,148 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
             return nil
         }
         
-        // Process .dem files
-        if filepath.Ext(path) == ".dem" {
-            match, err := GatherDemo(path)
-            if err != nil {
-                errs = append(errs, fmt.Errorf("%s: %w", path, err))
-                return nil // Continue processing other files
-            }
-            matches = append(matches, match)
+        // Only process .dem files
+        if filepath.Ext(path) != ".dem" {
+            return nil
         }
+        
+        demoCount++
+        log.Printf("Found demo %d: %s", demoCount, filepath.Base(path))
+        
+        // Analyze this demo
+        match, err := GatherDemo(path)
+        if err != nil {
+            errMsg := fmt.Errorf("failed to analyze %s: %w", path, err)
+            errs = append(errs, errMsg)
+            log.Printf("Error: %v", errMsg)
+            return nil // Continue processing other files
+        }
+        
+        matches = append(matches, match)
+        log.Printf("Successfully analyzed: %s (map: %s, rounds: %d)", 
+                   filepath.Base(path), match.MapName, len(match.Rounds))
         
         return nil
     })
     
     if err != nil {
-        errs = append(errs, err)
+        errs = append(errs, fmt.Errorf("directory walk error: %w", err))
     }
     
-    if len(matches) == 0 {
+    log.Printf("Scan complete: found %d demos, successfully analyzed %d", demoCount, len(matches))
+    
+    // Check if we found any demos
+    if demoCount == 0 {
         return nil, ErrNoDemos
     }
     
-    return matches, errors.Join(errs...)
+    // Check if all demos failed
+    if len(matches) == 0 && len(errs) > 0 {
+        return nil, fmt.Errorf("all %d demos failed to parse: %w", demoCount, errors.Join(errs...))
+    }
+    
+    // Return matches with combined errors (may be partial success)
+    if len(errs) > 0 {
+        return matches, errors.Join(errs...)
+    }
+    
+    return matches, nil
 }
+
+// GatherDemo analyzes a single demo file
+// This is the existing function - shown here for completeness
+func GatherDemo(demoPath string) (*api.Match, error) {
+    match, err := api.AnalyzeDemo(demoPath, api.AnalyzeDemoOptions{
+        IncludePositions: false,  // Set to true if you need player positions
+        Source:           constants.DemoSourceValve,
+    })
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    return match, nil
+}
+```
+
+### 2.6 Usage Example
+
+```go
+// In gui.go, when Analyze button is clicked:
+func (u *UI) runAnalysis(config AnalysisConfig) {
+    u.logEvent("Starting analysis...")
+    u.logEvent(fmt.Sprintf("Searching for demos in: %s", config.BasePath))
+    
+    // Gather all demos
+    matches, err := GatherAllDemosFromPath(config.BasePath)
+    
+    // Handle errors
+    if err != nil {
+        if errors.Is(err, ErrNoDemos) {
+            u.logEvent("Error: No demo files found in the specified path")
+            return
+        }
+        
+        // Check if we have partial results
+        if len(matches) > 0 {
+            u.logEvent(fmt.Sprintf("Warning: %d demos failed to parse: %v", 
+                                   countErrors(err), err))
+            u.logEvent(fmt.Sprintf("Continuing with %d successfully parsed demos", len(matches)))
+        } else {
+            u.logEvent(fmt.Sprintf("Error: All demos failed to parse: %v", err))
+            return
+        }
+    }
+    
+    u.logEvent(fmt.Sprintf("Found %d demos, starting analysis...", len(matches)))
+    
+    // Continue with wrangle.ProcessMatches()...
+}
+
+func countErrors(err error) int {
+    if err == nil {
+        return 0
+    }
+    // errors.Join creates an error that implements interface{ Unwrap() []error }
+    type multiErr interface {
+        Unwrap() []error
+    }
+    if me, ok := err.(multiErr); ok {
+        return len(me.Unwrap())
+    }
+    return 1
+}
+```
+
+### 2.7 Error Scenarios and Handling
+
+**Scenario 1: No demos found**
+```
+Input: /path/to/empty/folder
+Result: nil matches, ErrNoDemos
+UI: "Error: No demo files found in the specified path"
+```
+
+**Scenario 2: Some demos fail to parse**
+```
+Input: /path/with/10/demos (3 corrupted)
+Result: 7 matches, combined error with 3 failures
+UI: "Warning: 3 demos failed to parse"
+    "Continuing with 7 successfully parsed demos"
+```
+
+**Scenario 3: All demos fail**
+```
+Input: /path/with/corrupted/demos
+Result: nil matches, combined error
+UI: "Error: All demos failed to parse: [error details]"
+```
+
+**Scenario 4: Success**
+```
+Input: /path/with/valid/demos
+Result: all matches, nil error
+UI: "Found 15 demos, starting analysis..."
 ```
 
 ## 3. Wrangle Component (wrangle.go)
@@ -946,6 +1097,574 @@ The `api.Player` struct likely contains:
    - Can we correlate deaths with team information?
    - How to track if a player survived a round?
    - How to detect if a death was traded?
+
+## 3.7. Complete Implementation Example with cs-demo-analyzer
+
+This section provides detailed code examples showing EXACTLY how to extract and process data from cs-demo-analyzer.
+
+### 3.7.1 Understanding cs-demo-analyzer Data Structures
+
+**Key Insight: The challenge is side-specific statistics**
+
+The cs-demo-analyzer Player methods (KAST(), KillCount(), etc.) return **match-total** statistics, not per-side. To get side-specific stats, we must:
+1. Iterate through rounds to determine which side the player was on
+2. Filter kills/deaths/damage for that side
+3. Aggregate separately for T and CT sides
+
+**Important cs-demo-analyzer Structures:**
+
+```go
+// From cs-demo-analyzer package
+type Match struct {
+    MapName          string
+    PlayersBySteamID map[uint64]*Player  // Direct access by SteamID64!
+    Rounds           []*Round            // All rounds
+    Kills            []*Kill             // All kill events
+    Damages          []*Damage           // All damage events
+    TeamA            *Team
+    TeamB            *Team
+}
+
+type Player struct {
+    match     *Match          // Back-reference to match
+    SteamID64 uint64
+    Name      string
+    Team      *Team           // Player's team
+    // NO per-side stats stored here!
+}
+
+type Round struct {
+    Number    int
+    TeamASide common.Team     // TeamTerrorists or TeamCounterTerrorists
+    TeamBSide common.Team
+    // Teams swap sides at halftime
+}
+
+type Kill struct {
+    RoundNumber     int
+    KillerSteamID64 uint64
+    VictimSteamID64 uint64
+    KillerSide      common.Team    // T or CT
+    VictimSide      common.Team
+    IsTradeKill     bool           // Pre-calculated (5 sec window)
+    IsTradeDeath    bool           // Pre-calculated
+    IsHeadshot      bool
+    // ... other fields
+}
+
+type Team struct {
+    Name        string
+    CurrentSide *common.Team   // Changes during match (swaps at halftime)
+}
+
+// common.Team is an enum-like type
+const (
+    TeamTerrorists         common.Team = 2
+    TeamCounterTerrorists  common.Team = 3
+)
+```
+
+### 3.7.2 Determining Player Side Per Round
+
+**The Core Algorithm:**
+
+```go
+// determinePlayerSideInRound returns which side (T or CT) a player was on in a specific round
+func determinePlayerSideInRound(player *api.Player, round *api.Round) common.Team {
+    // Player belongs to either TeamA or TeamB
+    // Each round records which side TeamA and TeamB were on
+    
+    // Check if player is on TeamA
+    if player.Team == player.match.TeamA {
+        return round.TeamASide
+    }
+    
+    // Player must be on TeamB
+    return round.TeamBSide
+}
+
+// sideToString converts common.Team to "T" or "CT" string
+func sideToString(side common.Team) string {
+    if side == common.TeamTerrorists {
+        return "T"
+    }
+    return "CT"
+}
+```
+
+### 3.7.3 Extracting Side-Specific Statistics
+
+**Complete Implementation:**
+
+```go
+package manalyzer
+
+import (
+    "strconv"
+    
+    "github.com/akiver/cs-demo-analyzer/pkg/api"
+    "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
+)
+
+// extractPlayerStatsBySide extracts all statistics for a player, separated by side
+func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*SideStatistics {
+    sideStats := make(map[string]*SideStatistics)
+    sideStats["T"] = &SideStatistics{Side: "T"}
+    sideStats["CT"] = &SideStatistics{Side: "CT"}
+    
+    // Track rounds played per side
+    roundsPerSide := make(map[string][]int)
+    
+    // Iterate through all rounds to determine side per round
+    for _, round := range match.Rounds {
+        playerSide := determinePlayerSideInRound(player, round)
+        sideKey := sideToString(playerSide)
+        
+        roundsPerSide[sideKey] = append(roundsPerSide[sideKey], round.Number)
+        sideStats[sideKey].RoundsPlayed++
+    }
+    
+    // Now process kills/deaths/damage per side
+    for _, kill := range match.Kills {
+        roundNumber := kill.RoundNumber
+        
+        // Determine which side player was on this round
+        var playerSideThisRound common.Team
+        var round *api.Round
+        for _, r := range match.Rounds {
+            if r.Number == roundNumber {
+                round = r
+                playerSideThisRound = determinePlayerSideInRound(player, r)
+                break
+            }
+        }
+        if round == nil {
+            continue
+        }
+        
+        sideKey := sideToString(playerSideThisRound)
+        stats := sideStats[sideKey]
+        
+        // Check if this kill involves our player
+        if kill.KillerSteamID64 == player.SteamID64 && !kill.IsKillerControllingBot {
+            if !kill.IsSuicide() && !kill.IsTeamKill() {
+                stats.Kills++
+                if kill.IsHeadshot {
+                    stats.Headshots++
+                }
+                if kill.IsTradeKill {
+                    stats.TradeKills++
+                }
+            }
+        }
+        
+        if kill.VictimSteamID64 == player.SteamID64 && !kill.IsVictimControllingBot {
+            if !kill.IsSuicide() && kill.WeaponName != constants.WeaponBomb {
+                stats.Deaths++
+                if kill.IsTradeDeath {
+                    stats.TradeDeaths++
+                }
+            }
+        }
+        
+        if kill.AssisterSteamID64 == player.SteamID64 && !kill.IsAssisterControllingBot {
+            if kill.AssisterSide != kill.VictimSide {
+                stats.Assists++
+            }
+        }
+    }
+    
+    // Calculate first kills/deaths per side
+    for _, round := range match.Rounds {
+        playerSide := determinePlayerSideInRound(player, round)
+        sideKey := sideToString(playerSide)
+        stats := sideStats[sideKey]
+        
+        // Get kills in this round, in order
+        var killsInRound []*api.Kill
+        for _, kill := range match.Kills {
+            if kill.RoundNumber == round.Number {
+                killsInRound = append(killsInRound, kill)
+            }
+        }
+        
+        // Find first kill (non-suicide, non-teamkill)
+        for _, kill := range killsInRound {
+            if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
+                continue
+            }
+            
+            if kill.KillerSteamID64 == player.SteamID64 {
+                stats.FirstKills++
+            }
+            break // Only count the first kill
+        }
+        
+        // Find first death
+        for _, kill := range killsInRound {
+            if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
+                continue
+            }
+            
+            if kill.VictimSteamID64 == player.SteamID64 {
+                stats.FirstDeaths++
+            }
+            break // Only count the first death
+        }
+    }
+    
+    // Calculate damage per side
+    totalDamagePerSide := make(map[string]int)
+    for _, damage := range match.Damages {
+        if damage.AttackerSteamID64 == player.SteamID64 {
+            // Determine which round this damage occurred in
+            // (Damage events have Tick, need to map to round)
+            for _, round := range match.Rounds {
+                if damage.Tick >= round.StartTick && damage.Tick <= round.EndTick {
+                    playerSide := determinePlayerSideInRound(player, round)
+                    sideKey := sideToString(playerSide)
+                    totalDamagePerSide[sideKey] += damage.HealthDamage
+                    break
+                }
+            }
+        }
+    }
+    
+    // Calculate ADR (Average Damage per Round) per side
+    for sideKey, totalDamage := range totalDamagePerSide {
+        if sideStats[sideKey].RoundsPlayed > 0 {
+            sideStats[sideKey].ADR = float64(totalDamage) / float64(sideStats[sideKey].RoundsPlayed)
+        }
+    }
+    
+    // Calculate K/D per side
+    for _, stats := range sideStats {
+        if stats.Deaths > 0 {
+            stats.KD = float64(stats.Kills) / float64(stats.Deaths)
+        } else if stats.Kills > 0 {
+            stats.KD = float64(stats.Kills)
+        }
+    }
+    
+    // Calculate KAST per side
+    sideStats["T"].KAST = calculateKASTForSide(match, player, common.TeamTerrorists)
+    sideStats["CT"].KAST = calculateKASTForSide(match, player, common.TeamCounterTerrorists)
+    
+    return sideStats
+}
+
+// calculateKASTForSide calculates KAST percentage for a specific side
+// KAST = (Rounds with Kill or Assist or Survived or Traded) / Total Rounds on that side
+func calculateKASTForSide(match *api.Match, player *api.Player, side common.Team) float64 {
+    kastPerRound := make(map[int]bool)
+    roundsOnThisSide := 0
+    
+    for _, round := range match.Rounds {
+        playerSide := determinePlayerSideInRound(player, round)
+        if playerSide != side {
+            continue // Player was on opposite side this round
+        }
+        
+        roundsOnThisSide++
+        kastPerRound[round.Number] = false
+        playerSurvived := true
+        
+        for _, kill := range match.Kills {
+            if round.Number != kill.RoundNumber {
+                continue
+            }
+            
+            isTeamKill := kill.KillerSide == kill.VictimSide
+            if isTeamKill {
+                continue
+            }
+            
+            // Check for assist
+            if kill.AssisterSteamID64 == player.SteamID64 {
+                kastPerRound[round.Number] = true
+                continue
+            }
+            
+            // Check for kill
+            if kill.KillerSteamID64 == player.SteamID64 && kill.VictimSteamID64 != player.SteamID64 {
+                kastPerRound[round.Number] = true
+                continue
+            }
+            
+            // Check for death
+            if kill.VictimSteamID64 == player.SteamID64 {
+                playerSurvived = false
+                if kill.IsTradeDeath {
+                    kastPerRound[round.Number] = true
+                }
+            }
+        }
+        
+        // Check for survival
+        if playerSurvived {
+            kastPerRound[round.Number] = true
+        }
+    }
+    
+    // Calculate percentage
+    kastEventCount := 0
+    for _, hasKASTEvent := range kastPerRound {
+        if hasKASTEvent {
+            kastEventCount++
+        }
+    }
+    
+    if roundsOnThisSide > 0 {
+        return (float64(kastEventCount) / float64(roundsOnThisSide)) * 100.0
+    }
+    
+    return 0.0
+}
+
+func determinePlayerSideInRound(player *api.Player, round *api.Round) common.Team {
+    if player.Team == player.match.TeamA {
+        return round.TeamASide
+    }
+    return round.TeamBSide
+}
+
+func sideToString(side common.Team) string {
+    if side == common.TeamTerrorists {
+        return "T"
+    }
+    return "CT"
+}
+```
+
+### 3.7.4 Complete ProcessMatches Implementation
+
+**The Main Function:**
+
+```go
+package manalyzer
+
+import (
+    "fmt"
+    "strconv"
+    
+    "github.com/akiver/cs-demo-analyzer/pkg/api"
+)
+
+func ProcessMatches(matches []*api.Match, steamIDs []string) (*WrangleResult, error) {
+    if len(matches) == 0 {
+        return nil, fmt.Errorf("no matches to process")
+    }
+    
+    // Convert string SteamIDs to uint64
+    steamID64s := make([]uint64, 0, len(steamIDs))
+    for _, steamIDStr := range steamIDs {
+        if steamIDStr == "" {
+            continue
+        }
+        steamID64, err := strconv.ParseUint(steamIDStr, 10, 64)
+        if err != nil {
+            return nil, fmt.Errorf("invalid SteamID64 %s: %w", steamIDStr, err)
+        }
+        steamID64s = append(steamID64s, steamID64)
+    }
+    
+    if len(steamID64s) == 0 {
+        return nil, fmt.Errorf("no valid SteamIDs provided")
+    }
+    
+    // Initialize PlayerStats for each SteamID
+    playerStatsMap := make(map[uint64]*PlayerStats)
+    for _, steamID64 := range steamID64s {
+        playerStatsMap[steamID64] = &PlayerStats{
+            SteamID64: strconv.FormatUint(steamID64, 10),
+            MapStats:  make(map[string]*MapStatistics),
+        }
+    }
+    
+    // Track unique maps
+    mapsEncountered := make(map[string]bool)
+    
+    // Process each match
+    for _, match := range matches {
+        mapName := match.MapName
+        mapsEncountered[mapName] = true
+        
+        for steamID64, playerStats := range playerStatsMap {
+            // Check if player exists in this match
+            player, exists := match.PlayersBySteamID[steamID64]
+            if !exists {
+                continue // Player wasn't in this match
+            }
+            
+            // Set player name (for display) from first match
+            if playerStats.PlayerName == "" {
+                playerStats.PlayerName = player.Name
+            }
+            
+            // Initialize map stats if needed
+            if playerStats.MapStats[mapName] == nil {
+                playerStats.MapStats[mapName] = &MapStatistics{
+                    MapName:       mapName,
+                    MatchesPlayed: 0,
+                    SideStats:     make(map[string]*SideStatistics),
+                }
+            }
+            
+            mapStats := playerStats.MapStats[mapName]
+            mapStats.MatchesPlayed++
+            
+            // Extract stats by side
+            sideStatsFromMatch := extractPlayerStatsBySide(match, player)
+            
+            // Aggregate into existing side stats
+            for sideKey, newStats := range sideStatsFromMatch {
+                if mapStats.SideStats[sideKey] == nil {
+                    mapStats.SideStats[sideKey] = &SideStatistics{Side: sideKey}
+                }
+                
+                existing := mapStats.SideStats[sideKey]
+                
+                // Aggregate counts
+                existing.Kills += newStats.Kills
+                existing.Deaths += newStats.Deaths
+                existing.Assists += newStats.Assists
+                existing.FirstKills += newStats.FirstKills
+                existing.FirstDeaths += newStats.FirstDeaths
+                existing.TradeKills += newStats.TradeKills
+                existing.TradeDeaths += newStats.TradeDeaths
+                existing.Headshots += newStats.Headshots
+                existing.RoundsPlayed += newStats.RoundsPlayed
+                
+                // ADR needs weighted average
+                totalDamageExisting := existing.ADR * float64(existing.RoundsPlayed - newStats.RoundsPlayed)
+                totalDamageNew := newStats.ADR * float64(newStats.RoundsPlayed)
+                if existing.RoundsPlayed > 0 {
+                    existing.ADR = (totalDamageExisting + totalDamageNew) / float64(existing.RoundsPlayed)
+                }
+                
+                // KAST needs weighted average
+                kastRoundsExisting := (existing.KAST / 100.0) * float64(existing.RoundsPlayed - newStats.RoundsPlayed)
+                kastRoundsNew := (newStats.KAST / 100.0) * float64(newStats.RoundsPlayed)
+                if existing.RoundsPlayed > 0 {
+                    existing.KAST = ((kastRoundsExisting + kastRoundsNew) / float64(existing.RoundsPlayed)) * 100.0
+                }
+                
+                // Recalculate K/D
+                if existing.Deaths > 0 {
+                    existing.KD = float64(existing.Kills) / float64(existing.Deaths)
+                } else if existing.Kills > 0 {
+                    existing.KD = float64(existing.Kills)
+                }
+            }
+        }
+    }
+    
+    // Calculate overall stats for each player
+    for _, playerStats := range playerStatsMap {
+        playerStats.OverallStats = calculateOverallStats(playerStats.MapStats)
+    }
+    
+    // Convert to slice
+    playerStatsList := make([]*PlayerStats, 0, len(playerStatsMap))
+    for _, stats := range playerStatsMap {
+        playerStatsList = append(playerStatsList, stats)
+    }
+    
+    // Get sorted map list
+    mapList := make([]string, 0, len(mapsEncountered))
+    for mapName := range mapsEncountered {
+        mapList = append(mapList, mapName)
+    }
+    
+    return &WrangleResult{
+        PlayerStats:  playerStatsList,
+        MapList:      mapList,
+        TotalMatches: len(matches),
+    }, nil
+}
+
+// calculateOverallStats aggregates stats across all maps and sides
+func calculateOverallStats(mapStats map[string]*MapStatistics) *OverallStatistics {
+    overall := &OverallStatistics{}
+    
+    for _, mapStat := range mapStats {
+        overall.MatchesPlayed += mapStat.MatchesPlayed
+        
+        for _, sideStat := range mapStat.SideStats {
+            overall.Kills += sideStat.Kills
+            overall.Deaths += sideStat.Deaths
+            overall.Assists += sideStat.Assists
+            overall.FirstKills += sideStat.FirstKills
+            overall.FirstDeaths += sideStat.FirstDeaths
+            overall.TradeKills += sideStat.TradeKills
+            overall.TradeDeaths += sideStat.TradeDeaths
+            overall.Headshots += sideStat.Headshots
+            overall.RoundsPlayed += sideStat.RoundsPlayed
+        }
+    }
+    
+    // Calculate overall K/D
+    if overall.Deaths > 0 {
+        overall.KD = float64(overall.Kills) / float64(overall.Deaths)
+    } else if overall.Kills > 0 {
+        overall.KD = float64(overall.Kills)
+    }
+    
+    // Calculate weighted average ADR
+    totalDamage := 0.0
+    for _, mapStat := range mapStats {
+        for _, sideStat := range mapStat.SideStats {
+            totalDamage += sideStat.ADR * float64(sideStat.RoundsPlayed)
+        }
+    }
+    if overall.RoundsPlayed > 0 {
+        overall.ADR = totalDamage / float64(overall.RoundsPlayed)
+    }
+    
+    // Calculate weighted average KAST
+    kastRoundsTotal := 0.0
+    for _, mapStat := range mapStats {
+        for _, sideStat := range mapStat.SideStats {
+            kastRoundsTotal += (sideStat.KAST / 100.0) * float64(sideStat.RoundsPlayed)
+        }
+    }
+    if overall.RoundsPlayed > 0 {
+        overall.KAST = (kastRoundsTotal / float64(overall.RoundsPlayed)) * 100.0
+    }
+    
+    return overall
+}
+```
+
+### 3.7.5 Key Implementation Notes
+
+**Important Points:**
+
+1. **Player methods can't be used directly for side-specific stats**
+   - `player.KAST()` returns match total, not per-side
+   - We must implement our own KAST calculation per side
+
+2. **Side determination is critical**
+   - Check if player is on TeamA or TeamB
+   - Use round.TeamASide or round.TeamBSide accordingly
+   - Teams swap at halftime (handled automatically by round data)
+
+3. **Damage events need tick-to-round mapping**
+   - Damage struct has Tick but not RoundNumber
+   - Must find which round the tick falls into
+   - Use round.StartTick and round.EndTick
+
+4. **Trade kills use library's 5-second window**
+   - kill.IsTradeKill and kill.IsTradeDeath are pre-calculated
+   - Cannot customize to 2-4 seconds without re-implementing
+
+5. **First kills/deaths need round iteration**
+   - Find first non-suicide, non-teamkill in each round
+   - Must iterate rounds separately for each side
+
+6. **Aggregation requires weighted averages**
+   - KAST and ADR must be weighted by rounds played
+   - Simple sums work for counts (kills, deaths, etc.)
 
 ## 4. Display Component (GUI - Bottom Panel)
 
