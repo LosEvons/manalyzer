@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -93,11 +94,15 @@ func (el *EventLog) Log(message string) {
 		el.lines = el.lines[len(el.lines)-el.maxLines:]
 	}
 
-	// Update display
-	el.textView.Clear()
-	for _, l := range el.lines {
-		fmt.Fprintln(el.textView, l)
+	// Update display by building the full text content
+	var builder strings.Builder
+	for i, l := range el.lines {
+		builder.WriteString(l)
+		if i < len(el.lines)-1 {
+			builder.WriteString("\n")
+		}
 	}
+	el.textView.SetText(builder.String())
 }
 
 func (el *EventLog) LogError(message string) {
@@ -109,10 +114,15 @@ func (el *EventLog) LogError(message string) {
 		el.lines = el.lines[len(el.lines)-el.maxLines:]
 	}
 
-	el.textView.Clear()
-	for _, l := range el.lines {
-		fmt.Fprintln(el.textView, l)
+	// Update display by building the full text content
+	var builder strings.Builder
+	for i, l := range el.lines {
+		builder.WriteString(l)
+		if i < len(el.lines)-1 {
+			builder.WriteString("\n")
+		}
 	}
+	el.textView.SetText(builder.String())
 }
 
 // ============================================================================

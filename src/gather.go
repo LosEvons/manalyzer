@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -45,13 +44,11 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 		return nil, fmt.Errorf("base path is not a directory: %s", basePath)
 	}
 
-	log.Printf("Searching for demos in: %s", basePath)
-
 	// Walk directory tree recursively
 	err = filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Printf("Warning: cannot access %s: %v", path, err)
-			return nil // Continue with other directories
+			// Continue with other directories on error
+			return nil
 		}
 
 		if d.IsDir() {
@@ -63,20 +60,16 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 		}
 
 		demoCount++
-		log.Printf("Found demo %d: %s", demoCount, filepath.Base(path))
 
 		// Analyze demo
 		match, err := GatherDemo(path)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to analyze %s: %w", path, err)
 			errs = append(errs, errMsg)
-			log.Printf("Error: %v", errMsg)
 			return nil // Continue processing other files
 		}
 
 		matches = append(matches, match)
-		log.Printf("Successfully analyzed: %s (map: %s, rounds: %d)",
-			filepath.Base(path), match.MapName, len(match.Rounds))
 
 		return nil
 	})
@@ -84,8 +77,6 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 	if err != nil {
 		errs = append(errs, fmt.Errorf("directory walk error: %w", err))
 	}
-
-	log.Printf("Scan complete: found %d demos, successfully analyzed %d", demoCount, len(matches))
 
 	// Return appropriate error if no demos found
 	if demoCount == 0 {
@@ -108,11 +99,9 @@ func GatherAllDemos() ([]*api.Match, error) {
 	rgx := "*.dem"
 	hits, err := filepath.Glob(rgx)
 	if err != nil {
-		log.Printf("Filepath error %v", err)
 		return nil, err
 	}
 	if len(hits) == 0 {
-		log.Printf("No .dem files found")
 		return nil, ErrNoDemos
 	}
 
