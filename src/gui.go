@@ -428,6 +428,17 @@ func (u *UI) onAnalyzeClicked(form *tview.Form) {
 	// Collect form data
 	config := u.extractConfigFromForm(form)
 
+	// Validate base path first (required regardless of player count)
+	if config.BasePath == "" {
+		u.logEvent("Error: Demo base path must be specified")
+		return
+	}
+
+	if _, err := os.Stat(config.BasePath); os.IsNotExist(err) {
+		u.logEvent(fmt.Sprintf("Error: Path does not exist: %s", config.BasePath))
+		return
+	}
+
 	// Validate at least one player is specified
 	validPlayers := 0
 	for _, player := range config.Players {
@@ -438,17 +449,6 @@ func (u *UI) onAnalyzeClicked(form *tview.Form) {
 
 	if validPlayers == 0 {
 		u.logEvent("Error: At least one player with SteamID64 must be specified")
-		return
-	}
-
-	// Validate base path
-	if config.BasePath == "" {
-		u.logEvent("Error: Demo base path must be specified")
-		return
-	}
-
-	if _, err := os.Stat(config.BasePath); os.IsNotExist(err) {
-		u.logEvent(fmt.Sprintf("Error: Path does not exist: %s", config.BasePath))
 		return
 	}
 
