@@ -214,6 +214,10 @@ func (st *StatisticsTable) renderTable() {
 
 func (st *StatisticsTable) addDataRow(row int, playerName, mapName, side string,
 	stats *SideStatistics) {
+	if stats == nil {
+		return
+	}
+	
 	cols := []string{
 		playerName,
 		mapName,
@@ -238,6 +242,11 @@ func (st *StatisticsTable) addDataRow(row int, playerName, mapName, side string,
 }
 
 func (st *StatisticsTable) addMapSummaryRow(row int, playerName, mapName string, mapStats *MapStatistics) {
+	// Defensive check
+	if mapStats == nil || mapStats.SideStats == nil {
+		return
+	}
+	
 	// Calculate combined T+CT statistics for this map
 	var totalKills, totalDeaths, totalAssists int
 	var totalFirstKills, totalFirstDeaths int
@@ -246,6 +255,9 @@ func (st *StatisticsTable) addMapSummaryRow(row int, playerName, mapName string,
 	var weightedKAST, weightedADR float64
 	
 	for _, sideStats := range mapStats.SideStats {
+		if sideStats == nil {
+			continue
+		}
 		totalKills += sideStats.Kills
 		totalDeaths += sideStats.Deaths
 		totalAssists += sideStats.Assists
@@ -302,6 +314,10 @@ func (st *StatisticsTable) addMapSummaryRow(row int, playerName, mapName string,
 }
 
 func (st *StatisticsTable) addOverallRow(row int, playerName string, stats *OverallStatistics) {
+	if stats == nil {
+		return
+	}
+	
 	cols := []string{
 		playerName,
 		"Overall",
