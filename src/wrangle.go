@@ -89,11 +89,15 @@ func determinePlayerSideInRound(match *api.Match, player *api.Player, round *api
 }
 
 // sideToString converts common.Team to "T" or "CT" string for map keys
+// Returns empty string for unassigned/spectator teams
 func sideToString(side common.Team) string {
 	if side == common.TeamTerrorists {
 		return "T"
+	} else if side == common.TeamCounterTerrorists {
+		return "CT"
 	}
-	return "CT"
+	// Return empty string for TeamUnassigned, TeamSpectators, etc.
+	return ""
 }
 
 // ============================================================================
@@ -247,6 +251,9 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 	for _, round := range match.Rounds {
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
+		if sideKey == "" {
+			continue // Skip unassigned teams
+		}
 		sideStats[sideKey].RoundsPlayed++
 	}
 
@@ -267,6 +274,9 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 		// Determine player's side in this round
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
+		if sideKey == "" {
+			continue // Skip unassigned teams
+		}
 		stats := sideStats[sideKey]
 
 		// Count kills (if player is killer)
@@ -304,6 +314,9 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 	for _, round := range match.Rounds {
 		playerSide := determinePlayerSideInRound(match, player, round)
 		sideKey := sideToString(playerSide)
+		if sideKey == "" {
+			continue // Skip unassigned teams
+		}
 		stats := sideStats[sideKey]
 
 		// Get all kills in this round
@@ -351,7 +364,9 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			if damage.Tick >= round.StartTick && damage.Tick <= round.EndTick {
 				playerSide := determinePlayerSideInRound(match, player, round)
 				sideKey := sideToString(playerSide)
-				totalDamagePerSide[sideKey] += damage.HealthDamage
+				if sideKey != "" {
+					totalDamagePerSide[sideKey] += damage.HealthDamage
+				}
 				break
 			}
 		}
@@ -359,8 +374,11 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 
 	// Calculate ADR (Average Damage per Round)
 	for sideKey, totalDamage := range totalDamagePerSide {
-		if sideStats[sideKey].RoundsPlayed > 0 {
-			sideStats[sideKey].ADR = float64(totalDamage) / float64(sideStats[sideKey].RoundsPlayed)
+		if sideKey == "" {
+			continue // Skip unassigned
+		}
+		if stats, ok := sideStats[sideKey]; ok && stats != nil && stats.RoundsPlayed > 0 {
+			stats.ADR = float64(totalDamage) / float64(stats.RoundsPlayed)
 		}
 	}
 

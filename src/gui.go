@@ -170,13 +170,25 @@ func (st *StatisticsTable) renderTable() {
 	row := 1
 	if st.data != nil {
 		// Sort by player name initially
-		sortedPlayers := make([]*PlayerStats, len(st.data.PlayerStats))
-		copy(sortedPlayers, st.data.PlayerStats)
+		sortedPlayers := make([]*PlayerStats, 0, len(st.data.PlayerStats))
+		for _, ps := range st.data.PlayerStats {
+			if ps != nil {
+				sortedPlayers = append(sortedPlayers, ps)
+			}
+		}
 		sort.Slice(sortedPlayers, func(i, j int) bool {
+			// Defensive check for nil
+			if sortedPlayers[i] == nil || sortedPlayers[j] == nil {
+				return false
+			}
 			return sortedPlayers[i].PlayerName < sortedPlayers[j].PlayerName
 		})
 
 		for _, playerStats := range sortedPlayers {
+			if playerStats == nil {
+				continue
+			}
+			
 			// Add map-specific stats
 			for mapName, mapStats := range playerStats.MapStats {
 				// Apply filters
@@ -484,6 +496,13 @@ func (u *UI) extractConfigFromForm(form *tview.Form) AnalysisConfig {
 // ============================================================================
 
 func (u *UI) runAnalysis(config AnalysisConfig) {
+	// Add panic recovery to catch crashes and log them
+	defer func() {
+		if r := recover(); r != nil {
+			u.logEvent(fmt.Sprintf("PANIC during analysis: %v", r))
+		}
+	}()
+	
 	u.logEvent("Starting analysis...")
 
 	// Extract valid SteamIDs
