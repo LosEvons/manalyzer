@@ -32,6 +32,11 @@ func GatherAllDemosFromPath(basePath string) ([]*api.Match, error) {
 	var errs []error
 	var demoCount int
 
+	// Defensive check for empty path
+	if basePath == "" {
+		return nil, fmt.Errorf("base path is empty")
+	}
+
 	// Validate base path exists
 	info, err := os.Stat(basePath)
 	if os.IsNotExist(err) {

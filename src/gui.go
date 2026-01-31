@@ -520,6 +520,12 @@ func (u *UI) runAnalysis(config AnalysisConfig) {
 	matches, err := GatherAllDemosFromPath(config.BasePath)
 
 	if err != nil {
+		// Check if this is a fatal error (empty path, path doesn't exist, etc.)
+		if len(matches) == 0 {
+			u.logEvent(fmt.Sprintf("Error: %v", err))
+			return
+		}
+		// Otherwise just warn about partial failures
 		u.logEvent(fmt.Sprintf("Warning during demo gathering: %v", err))
 	}
 
