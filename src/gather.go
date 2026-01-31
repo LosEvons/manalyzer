@@ -25,8 +25,8 @@ func GatherDemo(demoPath string) (*api.Match, error) {
 	return match, nil
 }
 
-func GatherAllDemos() ([]*api.Match, error) {
-	rgx := "*.dem"
+func GatherAllDemos(basePath string) ([]*api.Match, error) {
+	rgx := filepath.Join(basePath, "*.dem")
 	hits, err := filepath.Glob(rgx)
 	if err != nil {
 		log.Printf("Filepath error %v", err)
