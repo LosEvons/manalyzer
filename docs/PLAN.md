@@ -2815,3 +2815,70 @@ This plan provides a comprehensive roadmap for implementing the Manalyzer applic
 - **User-friendly:** Simple form-based input with clear status feedback
 
 The phased approach allows for incremental development, starting with core functionality and gradually adding advanced features. Each phase builds upon the previous one, ensuring a solid foundation before adding complexity.
+
+---
+
+## 🎯 FINAL IMPLEMENTATION CHECKLIST
+
+### Phase 1: wrangle.go (Data Layer) - START HERE
+- [ ] 1.1 Define all data structures
+- [ ] 1.2 Implement helper functions (determinePlayerSideInRound, sideToString)
+- [ ] 1.3 Implement extractPlayerStatsBySide (7 steps)
+- [ ] 1.4 Implement calculateKASTForSide
+- [ ] 1.5 Implement ProcessMatches (5 steps)
+- [ ] 1.6 Implement calculateOverallStats
+- [ ] 1.7 Write and pass unit tests
+- [ ] ✅ **PHASE 1 COMPLETE**
+
+### Phase 2: gather.go (Data Collection)
+- [ ] 2.1 Implement GatherAllDemosFromPath
+- [ ] 2.2 Implement/verify GatherDemo wrapper
+- [ ] 2.3 Test with various scenarios
+- [ ] ✅ **PHASE 2 COMPLETE**
+
+### Phase 3: gui.go (UI Layer)
+- [ ] 3.1 Create input form with 5 player slots
+- [ ] 3.2 Implement event logging component
+- [ ] 3.3 Implement statistics table with filtering
+- [ ] 3.4 Wire button handlers (Analyze, Clear)
+- [ ] ✅ **PHASE 3 COMPLETE**
+
+### Phase 4: Integration & Testing
+- [ ] 4.1 Connect gather → wrangle → UI
+- [ ] 4.2 End-to-end test with real demos
+- [ ] 4.3 Test all filtering combinations
+- [ ] ✅ **READY FOR PRODUCTION**
+
+---
+
+## ⚠️ COMMON PITFALLS TO AVOID
+
+1. **Side Determination:** Always use `determinePlayerSideInRound()`, not `kill.KillerSide`
+2. **Weighted Averages:** Weight KAST/ADR by rounds: `(sum * rounds) / total_rounds`
+3. **Trade Detection:** Use `kill.IsTradeKill` from library (don't reimplement)
+4. **Bot Filters:** Always check `IsKillerControllingBot` and `IsVictimControllingBot`
+5. **Suicides/TeamKills:** Filter using `IsSuicide()` and `IsTeamKill()` methods
+6. **Damage Mapping:** Map `damage.Tick` to rounds using `round.StartTick` and `round.EndTick`
+7. **First Kills:** Break loop after finding first valid kill in round
+8. **Division by Zero:** Handle `deaths == 0` case in K/D calculation
+9. **Case Sensitivity:** Normalize map names to lowercase
+10. **SteamID Format:** Always use uint64 SteamID64 (17 digits)
+
+---
+
+## 📝 SUCCESS CRITERIA
+
+Implementation is complete when:
+1. ✅ All phase checklists are checked off
+2. ✅ Statistics match manual calculations for test data
+3. ✅ Can analyze real demo files from any directory
+4. ✅ Filtering works correctly (map only, side only, combined)
+5. ✅ Errors are handled gracefully with clear UI messages
+6. ✅ Performance is acceptable (< 1 second per demo)
+7. ✅ Code follows Go best practices and is well-documented
+
+---
+
+**END OF IMPLEMENTATION PLAN**
+
+*This plan is optimized for AI agent implementation with clear phases, checkpoints, and pitfalls documented. Follow sequentially and validate at each checkpoint.*
