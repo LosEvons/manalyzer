@@ -57,7 +57,7 @@ go build
 - **ADR**: Average Damage per Round
 - **K/D**: Kill/Death ratio
 - **FK/FD**: First Kills / First Deaths (first kill/death of the round)
-- **TK/TD**: Trade Kills / Trade Deaths (kills/deaths within 5 seconds of teammate death/after getting a kill)
+- **TK/TD**: Trade Kills / Trade Deaths (TK: killing an enemy shortly after a teammate's death; TD: being killed shortly after a teammate's death)
 
 ## Interface Layout
 

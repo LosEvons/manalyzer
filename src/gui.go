@@ -11,6 +11,14 @@ import (
 )
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const (
+	eventLogHeight = 5 // Height in rows for the event log panel
+)
+
+// ============================================================================
 // DATA STRUCTURES
 // ============================================================================
 
@@ -449,8 +457,8 @@ func New() *UI {
 	// Assemble layout with proper sizing
 	rightColumn := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(middlePanel, 5, 0, false).  // Fixed 5 rows for event log
-		AddItem(bottomPanel, 0, 1, false)   // Rest for statistics table
+		AddItem(middlePanel, eventLogHeight, 0, false). // Fixed height for event log
+		AddItem(bottomPanel, 0, 1, false)               // Rest for statistics table
 
 	mainLayout := tview.NewFlex().
 		AddItem(leftPanel, 0, 1, true).     // Left gets 1/3

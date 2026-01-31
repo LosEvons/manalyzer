@@ -319,10 +319,11 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			if kill.IsKillerControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
 				continue
 			}
+			// This is the first valid kill in the round
 			if kill.KillerSteamID64 == player.SteamID64 {
 				stats.FirstKills++
 			}
-			break // Only count first kill
+			break // Stop after finding first valid kill
 		}
 
 		// Find first death
@@ -330,10 +331,11 @@ func extractPlayerStatsBySide(match *api.Match, player *api.Player) map[string]*
 			if kill.IsVictimControllingBot || kill.IsSuicide() || kill.IsTeamKill() {
 				continue
 			}
+			// This is the first valid death in the round
 			if kill.VictimSteamID64 == player.SteamID64 {
 				stats.FirstDeaths++
 			}
-			break // Only count first death
+			break // Stop after finding first valid death
 		}
 	}
 
