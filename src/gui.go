@@ -1,33 +1,462 @@
 package manalyzer
 
 import (
+	"fmt"
+	"os"
+	"sort"
+	"time"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-type UI struct {
-	App    *tview.Application
-	Pages  *tview.Pages
-	Root   *tview.Flex
-	Left   *tview.Box
-	Middle tview.Primitive
-	Bottom *tview.Box
+// ============================================================================
+// DATA STRUCTURES
+// ============================================================================
+
+type PlayerInput struct {
+	Name      string // For display purposes only
+	SteamID64 string // Only SteamID64 format supported (17 digits)
 }
+
+type AnalysisConfig struct {
+	Players  [5]PlayerInput // Support 1-5 players (not all slots required)
+	BasePath string
+}
+
+// ============================================================================
+// UI COMPONENTS
+// ============================================================================
+
+type UI struct {
+	App        *tview.Application
+	Pages      *tview.Pages
+	Root       *tview.Flex
+	form       *tview.Form
+	eventLog   *EventLog
+	statsTable *StatisticsTable
+}
+
+type EventLog struct {
+	textView *tview.TextView
+	maxLines int
+	lines    []string
+}
+
+type StatisticsTable struct {
+	table      *tview.Table
+	data       *WrangleResult
+	filterMap  string // "" = all maps, or specific map name
+	filterSide string // "" = all sides, "T", or "CT"
+}
+
+// ============================================================================
+// EVENT LOG IMPLEMENTATION
+// ============================================================================
+
+func newEventLog(maxLines int) *EventLog {
+	tv := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+	
+	tv.SetBorder(true)
+	tv.SetTitle("Event Log")
+
+	tv.SetChangedFunc(func() {
+		// Auto-scroll to bottom
+		tv.ScrollToEnd()
+	})
+
+	return &EventLog{
+		textView: tv,
+		maxLines: maxLines,
+		lines:    make([]string, 0, maxLines),
+	}
+}
+
+func (el *EventLog) Log(message string) {
+	timestamp := time.Now().Format("15:04:05")
+	line := fmt.Sprintf("[yellow]%s[-] %s", timestamp, message)
+
+	el.lines = append(el.lines, line)
+
+	// Keep only last maxLines
+	if len(el.lines) > el.maxLines {
+		el.lines = el.lines[len(el.lines)-el.maxLines:]
+	}
+
+	// Update display
+	el.textView.Clear()
+	for _, l := range el.lines {
+		fmt.Fprintln(el.textView, l)
+	}
+}
+
+func (el *EventLog) LogError(message string) {
+	timestamp := time.Now().Format("15:04:05")
+	line := fmt.Sprintf("[yellow]%s[-] [red]ERROR:[-] %s", timestamp, message)
+
+	el.lines = append(el.lines, line)
+	if len(el.lines) > el.maxLines {
+		el.lines = el.lines[len(el.lines)-el.maxLines:]
+	}
+
+	el.textView.Clear()
+	for _, l := range el.lines {
+		fmt.Fprintln(el.textView, l)
+	}
+}
+
+// ============================================================================
+// STATISTICS TABLE IMPLEMENTATION
+// ============================================================================
+
+func newStatisticsTable() *StatisticsTable {
+	table := tview.NewTable().
+		SetBorders(true).
+		SetFixed(1, 0). // Fix header row
+		SetSelectable(true, false)
+	
+	table.SetBorder(true)
+	table.SetTitle("Player Statistics")
+
+	return &StatisticsTable{
+		table:      table,
+		filterMap:  "",
+		filterSide: "",
+	}
+}
+
+func (st *StatisticsTable) UpdateData(result *WrangleResult) {
+	st.data = result
+	st.renderTable()
+}
+
+func (st *StatisticsTable) renderTable() {
+	st.table.Clear()
+
+	// Header row with column names
+	headers := []string{"Player", "Map", "Side", "KAST%", "ADR", "K/D",
+		"Kills", "Deaths", "FK", "FD", "TK", "TD"}
+
+	for col, header := range headers {
+		cell := tview.NewTableCell(header).
+			SetTextColor(tcell.ColorYellow).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false).
+			SetAttributes(tcell.AttrBold)
+		st.table.SetCell(0, col, cell)
+	}
+
+	// Data rows
+	row := 1
+	if st.data != nil {
+		// Sort by player name initially
+		sortedPlayers := make([]*PlayerStats, len(st.data.PlayerStats))
+		copy(sortedPlayers, st.data.PlayerStats)
+		sort.Slice(sortedPlayers, func(i, j int) bool {
+			return sortedPlayers[i].PlayerName < sortedPlayers[j].PlayerName
+		})
+
+		for _, playerStats := range sortedPlayers {
+			// Add map-specific stats
+			for mapName, mapStats := range playerStats.MapStats {
+				// Apply filters
+				if st.filterMap != "" && mapName != st.filterMap {
+					continue
+				}
+
+				// Add rows for T side and CT side separately
+				for _, side := range []string{"T", "CT"} {
+					if st.filterSide != "" && side != st.filterSide {
+						continue
+					}
+
+					if sideStats, ok := mapStats.SideStats[side]; ok {
+						st.addDataRow(row, playerStats.PlayerName, mapName, side, sideStats)
+						row++
+					}
+				}
+			}
+
+			// Add overall row
+			if st.filterMap == "" && st.filterSide == "" && playerStats.OverallStats != nil {
+				st.addOverallRow(row, playerStats.PlayerName, playerStats.OverallStats)
+				row++
+			}
+		}
+	}
+}
+
+func (st *StatisticsTable) addDataRow(row int, playerName, mapName, side string,
+	stats *SideStatistics) {
+	cols := []string{
+		playerName,
+		mapName,
+		side,
+		fmt.Sprintf("%.1f", stats.KAST),
+		fmt.Sprintf("%.1f", stats.ADR),
+		fmt.Sprintf("%.2f", stats.KD),
+		fmt.Sprintf("%d", stats.Kills),
+		fmt.Sprintf("%d", stats.Deaths),
+		fmt.Sprintf("%d", stats.FirstKills),
+		fmt.Sprintf("%d", stats.FirstDeaths),
+		fmt.Sprintf("%d", stats.TradeKills),
+		fmt.Sprintf("%d", stats.TradeDeaths),
+	}
+
+	for col, text := range cols {
+		cell := tview.NewTableCell(text).
+			SetAlign(tview.AlignCenter).
+			SetTextColor(tcell.ColorWhite)
+		st.table.SetCell(row, col, cell)
+	}
+}
+
+func (st *StatisticsTable) addOverallRow(row int, playerName string, stats *OverallStatistics) {
+	cols := []string{
+		playerName,
+		"Overall",
+		"All",
+		fmt.Sprintf("%.1f", stats.KAST),
+		fmt.Sprintf("%.1f", stats.ADR),
+		fmt.Sprintf("%.2f", stats.KD),
+		fmt.Sprintf("%d", stats.Kills),
+		fmt.Sprintf("%d", stats.Deaths),
+		fmt.Sprintf("%d", stats.FirstKills),
+		fmt.Sprintf("%d", stats.FirstDeaths),
+		fmt.Sprintf("%d", stats.TradeKills),
+		fmt.Sprintf("%d", stats.TradeDeaths),
+	}
+
+	for col, text := range cols {
+		cell := tview.NewTableCell(text).
+			SetAlign(tview.AlignCenter).
+			SetTextColor(tcell.ColorGreen).
+			SetAttributes(tcell.AttrBold)
+		st.table.SetCell(row, col, cell)
+	}
+}
+
+func (st *StatisticsTable) SetFilter(mapFilter, sideFilter string) {
+	st.filterMap = mapFilter
+	st.filterSide = sideFilter
+	st.renderTable()
+}
+
+// ============================================================================
+// FORM CREATION AND VALIDATION
+// ============================================================================
+
+func createPlayerInputForm() *tview.Form {
+	form := tview.NewForm()
+	
+	form.SetBorder(true)
+	form.SetTitle("Player Configuration")
+	form.SetTitleAlign(tview.AlignLeft)
+
+	// Add 5 player input pairs
+	for i := 1; i <= 5; i++ {
+		playerLabel := fmt.Sprintf("Player %d Name", i)
+		steamLabel := fmt.Sprintf("Player %d SteamID64", i)
+
+		form.AddInputField(playerLabel, "", 30, nil, nil)
+		form.AddInputField(steamLabel, "", 17, validateSteamID64, nil)
+	}
+
+	// Add base path input
+	form.AddInputField("Demo Base Path", "", 50, nil, nil)
+
+	// Add buttons
+	form.AddButton("Analyze", nil) // Handler added later
+	form.AddButton("Clear", nil)
+
+	return form
+}
+
+// validateSteamID64 ensures only numeric input for SteamID64
+func validateSteamID64(text string, lastChar rune) bool {
+	// Allow empty string or only digits
+	if text == "" {
+		return true
+	}
+	// Check if character is a digit
+	if lastChar < '0' || lastChar > '9' {
+		return false
+	}
+	// Limit to 17 characters (SteamID64 length)
+	return len(text) <= 17
+}
+
+// ============================================================================
+// BUTTON HANDLERS
+// ============================================================================
+
+func (u *UI) setupFormHandlers(form *tview.Form) {
+	// Get button indices (assuming Analyze=0, Clear=1)
+	analyzeIdx := form.GetButtonCount() - 2
+	clearIdx := form.GetButtonCount() - 1
+
+	// Set Analyze button handler
+	form.GetButton(analyzeIdx).SetSelectedFunc(func() {
+		u.onAnalyzeClicked(form)
+	})
+
+	// Set Clear button handler
+	form.GetButton(clearIdx).SetSelectedFunc(func() {
+		u.onClearClicked(form)
+	})
+}
+
+func (u *UI) onAnalyzeClicked(form *tview.Form) {
+	// Collect form data
+	config := u.extractConfigFromForm(form)
+
+	// Validate at least one player is specified
+	validPlayers := 0
+	for _, player := range config.Players {
+		if player.SteamID64 != "" {
+			validPlayers++
+		}
+	}
+
+	if validPlayers == 0 {
+		u.logEvent("Error: At least one player with SteamID64 must be specified")
+		return
+	}
+
+	// Validate base path
+	if config.BasePath == "" {
+		u.logEvent("Error: Demo base path must be specified")
+		return
+	}
+
+	if _, err := os.Stat(config.BasePath); os.IsNotExist(err) {
+		u.logEvent(fmt.Sprintf("Error: Path does not exist: %s", config.BasePath))
+		return
+	}
+
+	// Start analysis (in goroutine to keep UI responsive)
+	go u.runAnalysis(config)
+}
+
+func (u *UI) onClearClicked(form *tview.Form) {
+	// Reset all form fields
+	formItemCount := form.GetFormItemCount()
+	for i := 0; i < formItemCount; i++ {
+		if field, ok := form.GetFormItem(i).(*tview.InputField); ok {
+			field.SetText("")
+		}
+	}
+	u.logEvent("Form cleared")
+}
+
+func (u *UI) extractConfigFromForm(form *tview.Form) AnalysisConfig {
+	config := AnalysisConfig{}
+
+	// Extract player data (5 pairs of name + steamID)
+	for i := 0; i < 5; i++ {
+		nameIdx := i * 2
+		steamIdx := i*2 + 1
+
+		if nameField, ok := form.GetFormItem(nameIdx).(*tview.InputField); ok {
+			config.Players[i].Name = nameField.GetText()
+		}
+		if steamField, ok := form.GetFormItem(steamIdx).(*tview.InputField); ok {
+			config.Players[i].SteamID64 = steamField.GetText()
+		}
+	}
+
+	// Extract base path (index 10 = after 5 player pairs)
+	if pathField, ok := form.GetFormItem(10).(*tview.InputField); ok {
+		config.BasePath = pathField.GetText()
+	}
+
+	return config
+}
+
+// ============================================================================
+// ANALYSIS EXECUTION
+// ============================================================================
+
+func (u *UI) runAnalysis(config AnalysisConfig) {
+	u.logEvent("Starting analysis...")
+
+	// Extract valid SteamIDs
+	var steamIDs []string
+	for _, player := range config.Players {
+		if player.SteamID64 != "" {
+			steamIDs = append(steamIDs, player.SteamID64)
+			u.logEvent(fmt.Sprintf("Tracking player: %s (%s)",
+				player.Name, player.SteamID64))
+		}
+	}
+
+	// Gather demos
+	u.logEvent(fmt.Sprintf("Searching for demos in: %s", config.BasePath))
+	matches, err := GatherAllDemosFromPath(config.BasePath)
+
+	if err != nil {
+		u.logEvent(fmt.Sprintf("Warning during demo gathering: %v", err))
+	}
+
+	if len(matches) == 0 {
+		u.logEvent("Error: No demo files found or all demos failed to parse")
+		return
+	}
+
+	u.logEvent(fmt.Sprintf("Found %d demos, starting analysis...", len(matches)))
+
+	// Process matches
+	result, err := ProcessMatches(matches, steamIDs)
+	if err != nil {
+		u.logEvent(fmt.Sprintf("Error during analysis: %v", err))
+		return
+	}
+
+	// Display results
+	u.logEvent(fmt.Sprintf("Analysis complete! Processed %d matches", result.TotalMatches))
+	u.logEvent(fmt.Sprintf("Found stats for %d players across %d maps",
+		len(result.PlayerStats), len(result.MapList)))
+
+	u.QueueUpdate(func() {
+		u.statsTable.UpdateData(result)
+	})
+}
+
+// ============================================================================
+// UI INITIALIZATION
+// ============================================================================
 
 func New() *UI {
 	app := tview.NewApplication()
 
-	left := tview.NewBox().SetBorder(true).SetTitle("Left (1/2 x width of Top)")
-	middle := tview.NewTextView().SetBorder(true).SetTitle("Middle (3 x height of Top)")
-	bottom := tview.NewBox().SetBorder(true).SetTitle("Bottom (10 rows)")
+	// Create components
+	form := createPlayerInputForm()
+	eventLog := newEventLog(50) // Keep last 50 events
+	statsTable := newStatisticsTable()
 
-	col := tview.NewFlex().
-		AddItem(left, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(middle, 0, 3, false).
-			AddItem(bottom, 10, 1, false), 0, 2, false)
+	// Create layout
+	leftPanel := form
 
-	pages := tview.NewPages().AddPage("main", col, true, true)
+	middlePanel := eventLog.textView
+	middlePanel.SetBorder(true).
+		SetTitle("Event Log").
+		SetTitleAlign(tview.AlignLeft)
+
+	bottomPanel := statsTable.table
+
+	// Assemble layout with proper sizing
+	rightColumn := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(middlePanel, 5, 0, false).  // Fixed 5 rows for event log
+		AddItem(bottomPanel, 0, 1, false)   // Rest for statistics table
+
+	mainLayout := tview.NewFlex().
+		AddItem(leftPanel, 0, 1, true).     // Left gets 1/3
+		AddItem(rightColumn, 0, 2, false)   // Right gets 2/3
+
+	pages := tview.NewPages().AddPage("main", mainLayout, true, true)
 
 	app.SetRoot(pages, true).EnableMouse(true)
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -39,15 +468,24 @@ func New() *UI {
 		return event
 	})
 
-	return &UI{
-		App:    app,
-		Pages:  pages,
-		Root:   col,
-		Left:   left,
-		Middle: middle,
-		Bottom: bottom,
+	ui := &UI{
+		App:        app,
+		Pages:      pages,
+		Root:       mainLayout,
+		form:       form,
+		eventLog:   eventLog,
+		statsTable: statsTable,
 	}
+
+	// Setup handlers after UI is created
+	ui.setupFormHandlers(form)
+
+	return ui
 }
+
+// ============================================================================
+// PUBLIC METHODS
+// ============================================================================
 
 func (u *UI) Start() error {
 	return u.App.Run()
@@ -61,11 +499,8 @@ func (u *UI) QueueUpdate(fn func()) {
 	u.App.QueueUpdateDraw(fn)
 }
 
-func (u *UI) SetMiddleText(text string) {
+func (u *UI) logEvent(message string) {
 	u.QueueUpdate(func() {
-		if tv, ok := u.Middle.(*tview.TextView); ok {
-			tv.Clear()
-			tv.Write([]byte(text))
-		}
+		u.eventLog.Log(message)
 	})
 }
