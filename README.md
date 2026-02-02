@@ -96,6 +96,12 @@ go build
 
 ## Technical Details
 
+### Logging & Error Handling
+
+- **Application Logs**: All operations are logged to `~/.config/manalyzer/manalyzer.log` (Linux/Mac) or `%APPDATA%\manalyzer\manalyzer.log` (Windows)
+- **Crash Recovery**: Panics are caught and logged with stack traces for debugging
+- **Error Messages**: User-friendly error messages displayed in Event Log
+
 ### Data Structures
 
 - **Side-Specific Statistics**: All statistics are calculated separately for T and CT sides
@@ -116,6 +122,33 @@ Built with:
 - [tview](https://github.com/rivo/tview) - Terminal UI framework
 - [tcell](https://github.com/gdamore/tcell) - Terminal handling
 - [go-echarts](https://github.com/go-echarts/go-echarts) - Interactive charts
+
+## Troubleshooting
+
+### Application Crashes or Unexpected Behavior
+
+If the application crashes or behaves unexpectedly:
+
+1. Check the log file for details:
+   - Linux/Mac: `~/.config/manalyzer/manalyzer.log`
+   - Windows: `%APPDATA%\manalyzer\manalyzer.log`
+
+2. Look for error messages or panic stack traces in the log
+
+3. The log file path is shown in the Event Log when the application starts
+
+### Viewing Logs
+
+```bash
+# View last 50 lines of log
+tail -50 ~/.config/manalyzer/manalyzer.log
+
+# Search for errors
+grep -i error ~/.config/manalyzer/manalyzer.log
+
+# Search for panics
+grep -i panic ~/.config/manalyzer/manalyzer.log
+```
 
 ## License
 
