@@ -7,6 +7,7 @@ toolchain go1.24.12
 require (
 	github.com/akiver/cs-demo-analyzer v1.8.2
 	github.com/gdamore/tcell/v2 v2.8.1
+	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/markus-wa/demoinfocs-golang/v4 v4.5.1
 	github.com/rivo/tview v0.42.1-0.20250929082832-e113793670e2
 )
