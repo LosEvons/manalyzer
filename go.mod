@@ -13,6 +13,7 @@ require (
 
 require (
 	github.com/gdamore/encoding v1.0.1 // indirect
+	github.com/go-echarts/go-echarts/v2 v2.6.7 // indirect
 	github.com/golang/geo v0.0.0-20250516193853-92f93c4cb289 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
