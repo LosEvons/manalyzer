@@ -36,6 +36,8 @@ func DefaultConfig() *Config {
 }
 
 // configPath returns the path to the config file.
+// On XDG-compliant systems (most Linux): ~/.config/manalyzer/config.json
+// On non-XDG systems (fallback): ~/.manalyzer/config.json
 func configPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -43,6 +45,7 @@ func configPath() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot determine config directory: %w", err)
 		}
+		// Fallback for non-XDG systems
 		return filepath.Join(homeDir, ".manalyzer", "config.json"), nil
 	}
 	return filepath.Join(configDir, "manalyzer", "config.json"), nil

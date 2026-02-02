@@ -22,16 +22,18 @@ func StartVisualizationServer(data *WrangleResult) (string, error) {
 	var listener net.Listener
 	var port int
 	var err error
+	var found bool
 	
 	for port = 8080; port <= 8090; port++ {
 		addr := fmt.Sprintf(":%d", port)
 		listener, err = net.Listen("tcp", addr)
 		if err == nil {
+			found = true
 			break
 		}
 	}
 	
-	if err != nil || listener == nil {
+	if !found || listener == nil {
 		return "", fmt.Errorf("no available ports in range 8080-8090: %w", err)
 	}
 	
@@ -167,14 +169,15 @@ func playerComparisonHandler(data *WrangleResult) http.HandlerFunc {
 				players = append(players, player.PlayerName)
 				kastData = append(kastData, opts.BarData{Value: player.OverallStats.KAST})
 				adrData = append(adrData, opts.BarData{Value: player.OverallStats.ADR})
-				kdData = append(kdData, opts.BarData{Value: player.OverallStats.KD * 100})
+				// K/D displayed as-is for consistency with other charts
+				kdData = append(kdData, opts.BarData{Value: player.OverallStats.KD})
 			}
 		}
 		
 		bar.SetXAxis(players)
 		bar.AddSeries("KAST%", kastData)
 		bar.AddSeries("ADR", adrData)
-		bar.AddSeries("K/D x100", kdData)
+		bar.AddSeries("K/D", kdData)
 		
 		bar.Render(w)
 	}

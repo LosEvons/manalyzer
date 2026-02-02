@@ -114,7 +114,9 @@ func (u *UI) onAnalyzeClicked(form *tview.Form) {
 		return
 	}
 
-	// Save config if auto-save enabled
+	// Save config if auto-save enabled (currently always enabled by default)
+	// The auto-save feature automatically persists player configurations
+	// after each successful analysis to provide continuity between sessions.
 	if u.config.Preferences.AutoSave {
 		persistConfig := u.buildConfigFromForm(form)
 		if err := SaveConfig(persistConfig); err != nil {
