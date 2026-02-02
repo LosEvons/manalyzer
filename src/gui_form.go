@@ -73,18 +73,22 @@ func (u *UI) setupFormHandlers(form *tview.Form) {
 	visualizeIdx := form.GetButtonCount() - 1
 
 	form.GetButton(analyzeIdx).SetSelectedFunc(func() {
+		defer RecoverFromPanic("onAnalyzeClicked")
 		u.onAnalyzeClicked(form)
 	})
 
 	form.GetButton(clearIdx).SetSelectedFunc(func() {
+		defer RecoverFromPanic("onClearClicked")
 		u.onClearClicked(form)
 	})
 
 	form.GetButton(saveIdx).SetSelectedFunc(func() {
+		defer RecoverFromPanic("onSaveConfigClicked")
 		u.onSaveConfigClicked(form)
 	})
 
 	form.GetButton(visualizeIdx).SetSelectedFunc(func() {
+		defer RecoverFromPanic("onVisualizeClicked")
 		u.onVisualizeClicked()
 	})
 }
@@ -138,37 +142,57 @@ func (u *UI) onClearClicked(form *tview.Form) {
 }
 
 func (u *UI) onSaveConfigClicked(form *tview.Form) {
+	LogInfo("Save Config button clicked")
 	config := u.buildConfigFromForm(form)
+	LogInfo("Config built from form: %d players", len(config.Players))
+	
 	if err := SaveConfig(config); err != nil {
+		LogError("Failed to save config: %v", err)
 		u.logEvent(fmt.Sprintf("Error saving config: %v", err))
 	} else {
 		u.config = config
+		LogInfo("Configuration saved successfully to %s", GetConfigPath())
 		u.logEvent("Configuration saved successfully")
 	}
 }
 
 func (u *UI) onVisualizeClicked() {
+	LogInfo("Visualize button clicked")
+	
+	if u.statsTable == nil {
+		LogError("statsTable is nil")
+		u.logEvent("Error: Internal error - statistics table not initialized")
+		return
+	}
+	
 	if u.statsTable.data == nil {
+		LogInfo("No data available for visualization")
 		u.logEvent("Error: No data to visualize. Run analysis first.")
 		return
 	}
 	
+	LogInfo("Starting visualization server with data")
 	u.logEvent("Starting visualization server...")
 	
 	url, err := StartVisualizationServer(u.statsTable.data)
 	if err != nil {
+		LogError("Failed to start visualization server: %v", err)
 		u.logEvent(fmt.Sprintf("Error: Failed to start server: %v", err))
 		return
 	}
 	
+	LogInfo("Visualization server started at %s", url)
 	u.logEvent(fmt.Sprintf("Visualization server started at %s", url))
 	
 	time.Sleep(500 * time.Millisecond)
 	
+	LogInfo("Attempting to open browser")
 	if err := openBrowser(url); err != nil {
+		LogError("Could not open browser: %v", err)
 		u.logEvent(fmt.Sprintf("Could not open browser: %v", err))
 		u.logEvent(fmt.Sprintf("Visit %s manually to view charts", url))
 	} else {
+		LogInfo("Browser opened successfully")
 		u.logEvent("Visualization dashboard opened in browser")
 	}
 }

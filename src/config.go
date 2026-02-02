@@ -47,6 +47,12 @@ func configPath() (string, error) {
 	return filepath.Join(configDir, "manalyzer", "config.json"), nil
 }
 
+// GetConfigPath returns the path to the config file (public wrapper)
+func GetConfigPath() string {
+	path, _ := configPath()
+	return path
+}
+
 // LoadConfig loads configuration from disk.
 func LoadConfig() (*Config, error) {
 	path, err := configPath()

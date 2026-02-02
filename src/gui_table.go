@@ -50,8 +50,10 @@ func (st *StatisticsTable) SetFilter(mapFilter, sideFilter string) {
 }
 
 func (st *StatisticsTable) toggleSort(columnIndex int) {
+	LogInfo("toggleSort called with columnIndex=%d, current sortColumn=%d", columnIndex, st.sortColumn)
 	if st.sortColumn == columnIndex {
 		st.sortDesc = !st.sortDesc
+		LogInfo("Toggled sort direction to desc=%v", st.sortDesc)
 	} else {
 		st.sortColumn = columnIndex
 		if columnIndex == 0 || columnIndex == 1 {
@@ -59,6 +61,7 @@ func (st *StatisticsTable) toggleSort(columnIndex int) {
 		} else {
 			st.sortDesc = true   // Descending for stats
 		}
+		LogInfo("Changed sort column to %d, desc=%v", st.sortColumn, st.sortDesc)
 	}
 }
 
@@ -150,9 +153,14 @@ func (st *StatisticsTable) renderTable() {
 		
 		// Make stat columns clickable
 		if columnIndex >= 3 {
+			// Capture columnIndex in a new variable for the closure
+			sortCol := columnIndex
 			cell.SetClickedFunc(func() bool {
-				st.toggleSort(columnIndex)
+				defer RecoverFromPanic("table column click")
+				LogInfo("Column %d clicked for sorting", sortCol)
+				st.toggleSort(sortCol)
 				st.app.QueueUpdateDraw(func() {
+					defer RecoverFromPanic("table renderTable in click handler")
 					st.renderTable()
 				})
 				return true
