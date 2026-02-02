@@ -10,6 +10,10 @@ CS:GO demo analyzer with a terminal UI for tracking player statistics with side-
 - **Comprehensive Metrics**: KAST, ADR, K/D, Kills, Deaths, First Kills/Deaths, Trade Kills/Deaths
 - **Recursive Demo Scanning**: Automatically finds all .dem files in a directory tree
 - **Interactive TUI**: Easy-to-use terminal interface with real-time event logging
+- **Persistent Configuration**: Auto-saves player configurations between sessions
+- **Interactive Sorting**: Click column headers to sort statistics
+- **Web Visualization**: Browser-based interactive charts with dark theme
+- **Robust Error Handling**: Graceful error recovery with clear user feedback
 
 ## Requirements
 
@@ -47,8 +51,23 @@ go build
    - Click the "Analyze" button to start processing demos
    - Watch the Event Log for progress updates
    - View results in the Statistics Table below
+   - Player configurations are automatically saved
 
-5. **Clear Form**:
+5. **Sort Statistics**:
+   - Click any stat column header to sort (KAST%, ADR, K/D, etc.)
+   - Click again to reverse sort direction
+   - Visual indicators (▲/▼) show current sort
+
+6. **Visualize Data**:
+   - Click the "Visualize" button after analysis
+   - Opens browser with interactive charts
+   - View player comparisons, T vs CT performance, and map breakdowns
+
+7. **Save Configuration**:
+   - Use the "Save Config" button to manually save player settings
+   - Configuration auto-saves after each analysis
+
+8. **Clear Form**:
    - Use the "Clear" button to reset all input fields
 
 ## Statistics Explained
@@ -62,15 +81,16 @@ go build
 ## Interface Layout
 
 ```
-┌─────────────────────────┬───────────────────────────────┐
-│  Player Configuration   │      Event Log (5 rows)       │
-│                         ├───────────────────────────────┤
-│  • Player 1-5 inputs    │                               │
-│  • SteamID64 fields     │    Statistics Table           │
-│  • Demo path            │    (Map, Side, Stats)         │
-│  • [Analyze] [Clear]    │                               │
-│                         │                               │
-└─────────────────────────┴───────────────────────────────┘
+┌─────────────────────────────┬─────────────────────────────┐
+│  Player Configuration       │   Event Log (5 rows)        │
+│                             ├─────────────────────────────┤
+│  • Player 1-5 inputs        │                             │
+│  • SteamID64 fields         │   Statistics Table          │
+│  • Demo path                │   (sortable by clicking     │
+│  • [Analyze] [Clear]        │    column headers)          │
+│  • [Save Config]            │                             │
+│  • [Visualize]              │   ▲/▼ Sort indicators       │
+└─────────────────────────────┴─────────────────────────────┘
 ```
 
 ## Controls
@@ -78,6 +98,18 @@ go build
 - **ESC** or **Ctrl+C**: Exit the application
 - **Tab**: Navigate between form fields
 - **Enter**: Activate buttons or submit fields
+- **Mouse**: Click column headers to sort, click buttons
+
+## Configuration
+
+Player configurations are automatically saved to:
+- Linux/macOS: `~/.config/manalyzer/config.json`
+- Fallback: `~/.manalyzer/config.json`
+
+The configuration persists between sessions and includes:
+- Player names and SteamID64 values
+- Last used demo path
+- Preferences (auto-save enabled by default)
 
 ## Technical Details
 
@@ -93,6 +125,24 @@ go build
 - Supports Valve demo format
 - Handles corrupted demos gracefully (continues processing others)
 - Logs detailed progress and errors
+- All errors displayed in Event Log (no crashes)
+
+### Error Handling
+
+- **Panic Recovery**: All goroutines protected with panic recovery
+- **Graceful Degradation**: Continues operation when individual demos fail
+- **Clear Feedback**: All errors displayed in Event Log with timestamps
+- **No Crashes**: Application cannot crash uncontrollably
+
+## Visualization
+
+After running analysis, click "Visualize" to open a web dashboard with:
+
+1. **Player Comparison** - Bar chart comparing overall performance (KAST%, ADR, K/D)
+2. **T vs CT Performance** - Side-specific KAST% comparison
+3. **Map Breakdown** - Performance by map for each player
+
+The visualization server runs on `localhost:8080-8090` (auto-selects available port) and opens automatically in your default browser.
 
 ## Development
 
@@ -100,6 +150,7 @@ Built with:
 - [cs-demo-analyzer](https://github.com/akiver/cs-demo-analyzer) - Demo parsing
 - [tview](https://github.com/rivo/tview) - Terminal UI framework
 - [tcell](https://github.com/gdamore/tcell) - Terminal handling
+- [go-echarts](https://github.com/go-echarts/go-echarts) - Data visualization
 
 ## License
 
