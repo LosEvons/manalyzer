@@ -10,6 +10,9 @@ CS:GO demo analyzer with a terminal UI for tracking player statistics with side-
 - **Comprehensive Metrics**: KAST, ADR, K/D, Kills, Deaths, First Kills/Deaths, Trade Kills/Deaths
 - **Recursive Demo Scanning**: Automatically finds all .dem files in a directory tree
 - **Interactive TUI**: Easy-to-use terminal interface with real-time event logging
+- **Persistent Configuration**: Auto-save/load player configurations between sessions
+- **Interactive Sorting**: Click column headers to sort statistics by any metric
+- **Web Visualization**: View interactive charts and graphs in your browser
 
 ## Requirements
 
@@ -47,8 +50,19 @@ go build
    - Click the "Analyze" button to start processing demos
    - Watch the Event Log for progress updates
    - View results in the Statistics Table below
+   - Click column headers to sort by any metric
 
-5. **Clear Form**:
+5. **Save Configuration**:
+   - Click "Save Config" to manually save player settings
+   - Configuration auto-saves after each analysis
+   - Config stored in `~/.config/manalyzer/config.json`
+
+6. **Visualize Results**:
+   - Click "Visualize" to open web dashboard
+   - View interactive charts in your browser
+   - Three chart types: Player Comparison, T vs CT Performance, Map Breakdown
+
+7. **Clear Form**:
    - Use the "Clear" button to reset all input fields
 
 ## Statistics Explained
@@ -67,9 +81,10 @@ go build
 │                         ├───────────────────────────────┤
 │  • Player 1-5 inputs    │                               │
 │  • SteamID64 fields     │    Statistics Table           │
-│  • Demo path            │    (Map, Side, Stats)         │
+│  • Demo path            │    (Click headers to sort)    │
 │  • [Analyze] [Clear]    │                               │
-│                         │                               │
+│  • [Save Config]        │                               │
+│  • [Visualize]          │                               │
 └─────────────────────────┴───────────────────────────────┘
 ```
 
@@ -100,6 +115,7 @@ Built with:
 - [cs-demo-analyzer](https://github.com/akiver/cs-demo-analyzer) - Demo parsing
 - [tview](https://github.com/rivo/tview) - Terminal UI framework
 - [tcell](https://github.com/gdamore/tcell) - Terminal handling
+- [go-echarts](https://github.com/go-echarts/go-echarts) - Interactive charts
 
 ## License
 
